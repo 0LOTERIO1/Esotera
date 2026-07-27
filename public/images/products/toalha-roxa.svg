@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-label="Toalha Roxa e Saquinho">
+  <rect width="800" height="1000" fill="#0c1220"/>
+  <rect x="110" y="230" width="580" height="400" rx="14" fill="#2d1f3d" stroke="#c4a35a" stroke-width="1.5"/>
+  <ellipse cx="400" cy="650" rx="100" ry="55" fill="#3d2a52" stroke="#c4a35a" stroke-width="1"/>
+  <text x="400" y="780" text-anchor="middle" fill="#e8e0d4" font-family="Georgia, serif" font-size="30">Toalha + Saquinho</text>
+  <text x="400" y="830" text-anchor="middle" fill="#9aa0ab" font-family="Arial, sans-serif" font-size="14">Demonstracao</text>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-label="Taro das Bruxas">
+  <rect width="800" height="1000" fill="#12101a"/>
+  <rect x="48" y="48" width="704" height="904" rx="10" fill="none" stroke="#c4a35a" stroke-width="1.5"/>
+  <path d="M400 280 L470 480 L330 480 Z" fill="none" stroke="#c4a35a" stroke-width="2"/>
+  <circle cx="400" cy="250" r="18" fill="#c4a35a" opacity="0.5"/>
+  <text x="400" y="600" text-anchor="middle" fill="#e8e0d4" font-family="Georgia, serif" font-size="32">Taro das Bruxas</text>
+  <text x="400" y="720" text-anchor="middle" fill="#9aa0ab" font-family="Arial, sans-serif" font-size="14">Demonstracao</text>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-label="Lenormand Primavera Rosa">
+  <rect width="800" height="1000" fill="#1a1220"/>
+  <rect x="48" y="48" width="704" height="904" rx="10" fill="none" stroke="#c4a35a" stroke-width="1.5"/>
+  <circle cx="400" cy="380" r="95" fill="none" stroke="#d4bc7d" stroke-width="1.5"/>
+  <circle cx="400" cy="380" r="40" fill="#c4a35a" opacity="0.25"/>
+  <text x="400" y="580" text-anchor="middle" fill="#e8e0d4" font-family="Georgia, serif" font-size="34">Lenormand</text>
+  <text x="400" y="630" text-anchor="middle" fill="#c4a35a" font-family="Georgia, serif" font-size="20">Primavera Rosa</text>
+  <text x="400" y="720" text-anchor="middle" fill="#9aa0ab" font-family="Arial, sans-serif" font-size="14">Demonstracao</text>
+</svg>

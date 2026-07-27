@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-label="Detalhe Taro de Waite">
+  <rect width="800" height="1000" fill="#0c1220"/>
+  <rect x="70" y="90" width="660" height="820" rx="8" fill="#141c2c" stroke="#c4a35a" stroke-width="1.5"/>
+  <circle cx="400" cy="420" r="90" fill="none" stroke="#d4bc7d" stroke-width="1.5" opacity="0.6"/>
+  <text x="400" y="580" text-anchor="middle" fill="#e8e0d4" font-family="Georgia, serif" font-size="32">78 Cartas + Manual</text>
+  <text x="400" y="630" text-anchor="middle" fill="#c4a35a" font-family="Arial, sans-serif" font-size="16">Galeria Esotera</text>
+</svg>

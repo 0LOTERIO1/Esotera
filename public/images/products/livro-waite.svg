@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-label="Livro de Waite">
+  <rect width="800" height="1000" fill="#0a0a0b"/>
+  <rect x="190" y="170" width="420" height="600" rx="6" fill="#2a2f3a" stroke="#c4a35a" stroke-width="1.5"/>
+  <rect x="210" y="200" width="380" height="8" fill="#c4a35a" opacity="0.35"/>
+  <text x="400" y="460" text-anchor="middle" fill="#e8e0d4" font-family="Georgia, serif" font-size="30">Livro de Waite</text>
+  <text x="400" y="510" text-anchor="middle" fill="#c4a35a" font-family="Arial, sans-serif" font-size="16">Manual explicativo</text>
+  <text x="400" y="860" text-anchor="middle" fill="#9aa0ab" font-family="Arial, sans-serif" font-size="14">Demonstracao</text>
+</svg>

@@ -206,13 +206,10 @@ public class OrderService : IOrderService
 
             var total = subtotalAfterDiscount + Math.Max(0, shippingPrice);
 
-            var initialStatus = request.PaymentMethod == PaymentMethod.Boleto
-                ? OrderStatus.AwaitingPayment
-                : OrderStatus.PaymentApproved;
-
-            var paymentStatus = request.PaymentMethod == PaymentMethod.Boleto
-                ? "pending"
-                : "approved";
+            // Pagamento real (ou boleto): sempre aguarda confirmação via webhook/consulta MP.
+            // Aprovação simulada existe apenas no frontend mock — nunca aqui na API.
+            var initialStatus = OrderStatus.AwaitingPayment;
+            var paymentStatus = "pending";
 
             var order = new Order
             {

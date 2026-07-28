@@ -131,7 +131,7 @@ public class OrderTests : IClassFixture<CustomWebApplicationFactory>
         var order = await response.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         order.Should().NotBeNull();
         order!.OrderNumber.Should().StartWith("ES");
-        order.Status.Should().Be("payment_approved");
+        order.Status.Should().Be("awaiting_payment");
         order.Items.Should().HaveCount(1);
         order.Payment.Installments.Should().Be(2);
     }

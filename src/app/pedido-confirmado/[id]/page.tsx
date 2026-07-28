@@ -117,11 +117,12 @@ export default function OrderConfirmedPage({
 
   const address = order.shipping.address;
   const displayNumber = order.orderNumber ?? order.id;
+  const awaitingPayment = order.status === "awaiting_payment";
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="font-serif text-4xl text-esotera-secondary">
-        Pedido confirmado
+        {awaitingPayment ? "Pedido registrado" : "Pedido confirmado"}
       </h1>
       <p className="mt-2 text-sm text-esotera-muted">
         Número: <span className="text-esotera-text">{displayNumber}</span>
@@ -129,9 +130,23 @@ export default function OrderConfirmedPage({
       <p className="mt-1 text-sm text-esotera-muted">
         {formatDate(order.createdAt)} · <StatusBadge status={order.status} />
       </p>
-      <p className="mt-2 text-sm text-esotera-muted">
-        Acompanhe o status do pagamento e da entrega em Minha conta.
-      </p>
+      {awaitingPayment ? (
+        <div className="mt-4 rounded-md border border-esotera-border bg-esotera-surface-secondary px-4 py-3 text-sm text-esotera-muted">
+          <p>
+            Aguardando confirmação do pagamento. O status só muda após
+            confirmação segura do Mercado Pago (não pelo retorno do navegador).
+          </p>
+          {isApiMode() ? (
+            <ButtonLink href={`/pagamento/${order.id}`} className="mt-3">
+              Ir para o pagamento
+            </ButtonLink>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-esotera-muted">
+          Acompanhe o status do pagamento e da entrega em Minha conta.
+        </p>
+      )}
 
       <section className="mt-8 space-y-4 rounded-lg border border-esotera-border p-5">
         <h2 className="font-serif text-xl text-esotera-text">Produtos</h2>

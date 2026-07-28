@@ -63,6 +63,14 @@ public static class DependencyInjection
                 options.Environment,
                 configuration["MERCADO_PAGO_ENVIRONMENT"],
                 configuration["MercadoPago:Environment"]) ?? "test";
+            options.NotificationUrl = FirstNonEmpty(
+                options.NotificationUrl,
+                configuration["MERCADO_PAGO_NOTIFICATION_URL"],
+                configuration["MercadoPago:NotificationUrl"]);
+            options.PublicApiBaseUrl = FirstNonEmpty(
+                options.PublicApiBaseUrl,
+                configuration["PUBLIC_API_BASE_URL"],
+                configuration["MercadoPago:PublicApiBaseUrl"]);
         });
 
         services.AddSingleton<IClock, SystemClock>();
@@ -76,6 +84,8 @@ public static class DependencyInjection
             services.AddSingleton<IProductImageStorage>(sp => sp.GetRequiredService<FakeProductImageStorage>());
             services.AddSingleton<CapturingEmailSender>();
             services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<CapturingEmailSender>());
+            services.AddSingleton<FakeMercadoPagoClient>();
+            services.AddSingleton<IMercadoPagoClient>(sp => sp.GetRequiredService<FakeMercadoPagoClient>());
         }
         else
         {
@@ -92,6 +102,12 @@ public static class DependencyInjection
                     return ActivatorUtilities.CreateInstance<SmtpEmailSender>(sp);
                 return ActivatorUtilities.CreateInstance<NullEmailSender>(sp);
             });
+
+            services.AddHttpClient<IMercadoPagoClient, MercadoPagoHttpClient>(client =>
+            {
+                client.BaseAddress = new Uri("https://api.mercadopago.com/");
+                client.Timeout = TimeSpan.FromSeconds(60);
+            });
         }
 
         services.AddScoped<IAuthService, AuthService>();
@@ -103,7 +119,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IAdminQueryService, AdminQueryService>();
         services.AddScoped<INewsletterService, NewsletterService>();
-
+        services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<DevSeed>();
         services.AddScoped<AdminBootstrap>();
 

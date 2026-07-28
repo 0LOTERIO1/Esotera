@@ -32,6 +32,20 @@ public class MercadoPagoOptions
     public string? WebhookSecret { get; set; }
     /// <summary>test | production</summary>
     public string Environment { get; set; } = "test";
+    /// <summary>URL pública do webhook (ex.: https://esotera-api.onrender.com/api/webhooks/mercadopago).</summary>
+    public string? NotificationUrl { get; set; }
+    /// <summary>Base da API pública para montar notification_url se NotificationUrl vazio.</summary>
+    public string? PublicApiBaseUrl { get; set; }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(AccessToken);
+
+    public string ResolveNotificationUrl()
+    {
+        if (!string.IsNullOrWhiteSpace(NotificationUrl))
+            return NotificationUrl.Trim();
+        var baseUrl = (PublicApiBaseUrl ?? "").Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return string.Empty;
+        return $"{baseUrl}/api/webhooks/mercadopago";
+    }
 }

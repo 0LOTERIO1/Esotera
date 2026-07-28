@@ -143,12 +143,14 @@ public class AdminPanelTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task AdminList_FilterByStatus()
     {
-        await CreateCustomerOrderAsync("filtstat", ProductWaitePocketId);
+        var (orderId, _) = await CreateCustomerOrderAsync("filtstat", ProductWaitePocketId);
         await SetAdminAsync();
 
-        var response = await _client.GetAsync("/api/admin/orders?status=payment_approved");
+        var response = await _client.GetAsync("/api/admin/orders?status=awaiting_payment");
         var page = await response.Content.ReadFromJsonAsync<PagedResult<AdminOrderSummaryDto>>(JsonOptions);
-        page!.Items.Should().OnlyContain(o => o.Status == "payment_approved");
+        page!.Items.Should().NotBeEmpty();
+        page.Items.Should().OnlyContain(o => o.Status == "awaiting_payment");
+        page.Items.Should().Contain(o => o.Id == orderId);
     }
 
     [Fact]

@@ -45,6 +45,13 @@ public class Order
     public int? PaymentInstallments { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
 
+    /// <summary>ID do pagamento no Mercado Pago (nunca cartão/CVV).</summary>
+    public string? MercadoPagoPaymentId { get; set; }
+    /// <summary>Último status reportado pelo MP (approved, pending, rejected…).</summary>
+    public string? MercadoPagoPaymentStatus { get; set; }
+    /// <summary>Idempotência da criação do pagamento no MP.</summary>
+    public string? PaymentIdempotencyKey { get; set; }
+
     public string CustomerName { get; set; } = string.Empty;
     public string CustomerEmail { get; set; } = string.Empty;
     public string? CustomerPhone { get; set; }

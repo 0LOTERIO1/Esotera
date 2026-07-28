@@ -2,6 +2,7 @@ using Esotera.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,18 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                // Tokens fictícios apenas para IsConfigured nos testes — nunca credenciais reais.
+                ["MERCADO_PAGO_ACCESS_TOKEN"] = "test-access-token-for-unit-tests-only",
+                ["MERCADO_PAGO_ENVIRONMENT"] = "test",
+                ["MERCADO_PAGO_WEBHOOK_SECRET"] = "test-webhook-secret",
+                ["PUBLIC_API_BASE_URL"] = "http://localhost"
+            });
+        });
 
         builder.ConfigureServices(services =>
         {

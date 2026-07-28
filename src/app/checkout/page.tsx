@@ -307,6 +307,13 @@ export default function CheckoutPage() {
       attemptFingerprintRef.current = null;
       setUncertainResult(false);
       clearCart();
+
+      if (isApiMode() && isRealPaymentEnabled()) {
+        push("success", "Pedido criado. Conclua o pagamento.");
+        router.push(`/pagamento/${order.id}`);
+        return;
+      }
+
       push("success", "Pedido criado com sucesso.");
       router.push(`/pedido-confirmado/${order.id}`);
     } catch (error) {

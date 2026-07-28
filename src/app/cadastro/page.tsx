@@ -7,7 +7,12 @@ import { FormField, inputClassName } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { brazilianStates } from "@/data/brazilianStates";
 import { maskCep, maskCpf, maskPhone } from "@/utils/masks";
-import { validateCep, validateCpf, validateEmail } from "@/utils/validation";
+import {
+  inferRegisterErrorField,
+  mapRegisterApiFieldErrors,
+} from "@/utils/registerFieldErrors";
+import { onlyDigits, validateCep, validateCpf, validateEmail } from "@/utils/validation";
+import { ApiError } from "@/services/api/apiClient";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { useCepAutofill } from "@/hooks/useCepAutofill";
@@ -31,7 +36,7 @@ type FormState = {
   privacy: boolean;
 };
 
-type Errors = Partial<Record<keyof FormState, string>>;
+type Errors = Partial<Record<keyof FormState | "form", string>>;
 
 const initial: FormState = {
   name: "",
@@ -63,6 +68,13 @@ function RegisterForm() {
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => {
+      if (!prev[key] && !prev.form) return prev;
+      const next = { ...prev };
+      delete next[key];
+      delete next.form;
+      return next;
+    });
   }
 
   const applyCepResult = useCallback((result: CepLookupResult) => {
@@ -103,8 +115,15 @@ function RegisterForm() {
     const next: Errors = {};
     if (!form.name.trim()) next.name = "Informe o nome completo.";
     if (!validateEmail(form.email)) next.email = "E-mail inválido.";
-    if (!validateCpf(form.cpf)) next.cpf = "CPF inválido.";
-    if (form.phone.replace(/\D/g, "").length < 10)
+
+    const cpfDigits = onlyDigits(form.cpf);
+    if (cpfDigits.length !== 11) {
+      next.cpf = "CPF deve conter 11 dígitos.";
+    } else if (!validateCpf(form.cpf)) {
+      next.cpf = "CPF inválido.";
+    }
+
+    if (onlyDigits(form.phone).length < 10)
       next.phone = "Telefone inválido.";
     if (form.password.length < 6)
       next.password = "A senha deve ter ao menos 6 caracteres.";
@@ -132,8 +151,8 @@ function RegisterForm() {
       await register({
         name: form.name,
         email: form.email,
-        cpf: form.cpf,
-        phone: form.phone,
+        cpf: onlyDigits(form.cpf),
+        phone: onlyDigits(form.phone),
         password: form.password,
         address: {
           cep: form.cep,
@@ -148,9 +167,24 @@ function RegisterForm() {
       push("success", "Conta criada com sucesso.");
       router.push(returnUrl || "/minha-conta");
     } catch (err) {
-      setErrors({
-        email: err instanceof Error ? err.message : "Erro no cadastro.",
-      });
+      const fieldErrors = mapRegisterApiFieldErrors(err);
+      if (Object.keys(fieldErrors).length > 0) {
+        setErrors(fieldErrors);
+        return;
+      }
+
+      const message =
+        err instanceof ApiError
+          ? err.userMessage
+          : err instanceof Error
+            ? err.message
+            : "Erro no cadastro.";
+      const field = inferRegisterErrorField(message);
+      if (field === "form") {
+        setErrors({ form: message });
+      } else {
+        setErrors({ [field]: message });
+      }
     }
   }
 
@@ -168,50 +202,75 @@ function RegisterForm() {
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 grid gap-4 sm:grid-cols-2" noValidate>
+        {errors.form ? (
+          <p className="sm:col-span-2 text-sm text-esotera-error" role="alert">
+            {errors.form}
+          </p>
+        ) : null}
         <div className="sm:col-span-2">
           <FormField label="Nome completo" id="name" required error={errors.name}>
             <input
               id="name"
+              name="name"
+              autoComplete="name"
               className={inputClassName}
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={errors.name ? "name-error" : undefined}
             />
           </FormField>
         </div>
         <FormField label="E-mail" id="email" required error={errors.email}>
           <input
             id="email"
+            name="email"
             type="email"
+            autoComplete="email"
             className={inputClassName}
             value={form.email}
             onChange={(e) => set("email", e.target.value)}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "email-error" : undefined}
           />
         </FormField>
         <FormField label="CPF" id="cpf" required error={errors.cpf}>
           <input
             id="cpf"
+            name="cpf"
+            autoComplete="off"
             className={inputClassName}
             value={form.cpf}
             onChange={(e) => set("cpf", maskCpf(e.target.value))}
             inputMode="numeric"
+            aria-invalid={Boolean(errors.cpf)}
+            aria-describedby={errors.cpf ? "cpf-error" : undefined}
           />
         </FormField>
         <FormField label="Telefone" id="phone" required error={errors.phone}>
           <input
             id="phone"
+            name="phone"
+            autoComplete="tel"
             className={inputClassName}
             value={form.phone}
             onChange={(e) => set("phone", maskPhone(e.target.value))}
             inputMode="tel"
+            aria-invalid={Boolean(errors.phone)}
+            aria-describedby={errors.phone ? "phone-error" : undefined}
           />
         </FormField>
         <FormField label="Senha" id="password" required error={errors.password}>
           <input
             id="password"
+            name="password"
             type="password"
+            autoComplete="new-password"
             className={inputClassName}
             value={form.password}
             onChange={(e) => set("password", e.target.value)}
+            aria-invalid={Boolean(errors.password)}
+            aria-describedby={errors.password ? "password-error" : undefined}
           />
         </FormField>
         <FormField
@@ -222,10 +281,16 @@ function RegisterForm() {
         >
           <input
             id="confirmPassword"
+            name="confirmPassword"
             type="password"
+            autoComplete="new-password"
             className={inputClassName}
             value={form.confirmPassword}
             onChange={(e) => set("confirmPassword", e.target.value)}
+            aria-invalid={Boolean(errors.confirmPassword)}
+            aria-describedby={
+              errors.confirmPassword ? "confirmPassword-error" : undefined
+            }
           />
         </FormField>
         <FormField
@@ -241,6 +306,8 @@ function RegisterForm() {
         >
           <input
             id="cep"
+            name="cep"
+            autoComplete="postal-code"
             className={inputClassName}
             value={form.cep}
             onChange={(e) => {
@@ -249,6 +316,8 @@ function RegisterForm() {
             }}
             inputMode="numeric"
             aria-busy={lookingUp}
+            aria-invalid={Boolean(errors.cep)}
+            aria-describedby={errors.cep ? "cep-error" : undefined}
           />
         </FormField>
         {lookingUp ? (
@@ -264,23 +333,31 @@ function RegisterForm() {
         <FormField label="Endereço" id="street" required error={errors.street}>
           <input
             id="street"
+            name="street"
+            autoComplete="street-address"
             className={inputClassName}
             value={form.street}
             onChange={(e) => set("street", e.target.value)}
             disabled={lookingUp}
+            aria-invalid={Boolean(errors.street)}
+            aria-describedby={errors.street ? "street-error" : undefined}
           />
         </FormField>
         <FormField label="Número" id="number" required error={errors.number}>
           <input
             id="number"
+            name="number"
             className={inputClassName}
             value={form.number}
             onChange={(e) => set("number", e.target.value)}
+            aria-invalid={Boolean(errors.number)}
+            aria-describedby={errors.number ? "number-error" : undefined}
           />
         </FormField>
         <FormField label="Complemento (opcional)" id="complement">
           <input
             id="complement"
+            name="complement"
             className={inputClassName}
             value={form.complement}
             onChange={(e) => set("complement", e.target.value)}
@@ -294,28 +371,41 @@ function RegisterForm() {
         >
           <input
             id="neighborhood"
+            name="neighborhood"
             className={inputClassName}
             value={form.neighborhood}
             onChange={(e) => set("neighborhood", e.target.value)}
             disabled={lookingUp}
+            aria-invalid={Boolean(errors.neighborhood)}
+            aria-describedby={
+              errors.neighborhood ? "neighborhood-error" : undefined
+            }
           />
         </FormField>
         <FormField label="Cidade" id="city" required error={errors.city}>
           <input
             id="city"
+            name="city"
+            autoComplete="address-level2"
             className={inputClassName}
             value={form.city}
             onChange={(e) => set("city", e.target.value)}
             disabled={lookingUp}
+            aria-invalid={Boolean(errors.city)}
+            aria-describedby={errors.city ? "city-error" : undefined}
           />
         </FormField>
         <FormField label="Estado" id="state" required error={errors.state}>
           <select
             id="state"
+            name="state"
+            autoComplete="address-level1"
             className={inputClassName}
             value={form.state}
             onChange={(e) => set("state", e.target.value)}
             disabled={lookingUp}
+            aria-invalid={Boolean(errors.state)}
+            aria-describedby={errors.state ? "state-error" : undefined}
           >
             {brazilianStates.map((s) => (
               <option key={s.uf} value={s.uf}>
@@ -326,12 +416,15 @@ function RegisterForm() {
         </FormField>
 
         <div className="sm:col-span-2 space-y-3">
-          <label className="flex items-start gap-2 text-sm text-esotera-muted">
+          <label className="flex items-start gap-2 text-sm text-esotera-muted" htmlFor="terms">
             <input
+              id="terms"
+              name="terms"
               type="checkbox"
               checked={form.terms}
               onChange={(e) => set("terms", e.target.checked)}
               className="mt-1"
+              aria-invalid={Boolean(errors.terms)}
             />
             <span>
               Aceito os{" "}
@@ -339,18 +432,21 @@ function RegisterForm() {
                 termos de uso
               </Link>
               {errors.terms ? (
-                <span className="mt-1 block text-xs text-esotera-error" role="alert">
+                <span id="terms-error" className="mt-1 block text-xs text-esotera-error" role="alert">
                   {errors.terms}
                 </span>
               ) : null}
             </span>
           </label>
-          <label className="flex items-start gap-2 text-sm text-esotera-muted">
+          <label className="flex items-start gap-2 text-sm text-esotera-muted" htmlFor="privacy">
             <input
+              id="privacy"
+              name="privacy"
               type="checkbox"
               checked={form.privacy}
               onChange={(e) => set("privacy", e.target.checked)}
               className="mt-1"
+              aria-invalid={Boolean(errors.privacy)}
             />
             <span>
               Aceito a{" "}
@@ -361,7 +457,7 @@ function RegisterForm() {
                 política de privacidade
               </Link>
               {errors.privacy ? (
-                <span className="mt-1 block text-xs text-esotera-error" role="alert">
+                <span id="privacy-error" className="mt-1 block text-xs text-esotera-error" role="alert">
                   {errors.privacy}
                 </span>
               ) : null}

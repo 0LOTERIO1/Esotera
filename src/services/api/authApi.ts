@@ -1,5 +1,6 @@
 import { apiClient, ApiError } from "./apiClient";
 import { sessionService } from "./sessionService";
+import { onlyDigits } from "@/utils/validation";
 import type { User, UserRole, Address } from "@/types";
 
 export type ApiUserDto = {
@@ -82,9 +83,10 @@ export const authApi = {
       "/api/auth/register",
       {
         name: input.name,
-        email: input.email,
-        cpf: input.cpf,
-        phone: input.phone,
+        email: input.email.trim(),
+        // Normaliza antes da validação da API (remove máscara).
+        cpf: onlyDigits(input.cpf) || null,
+        phone: onlyDigits(input.phone) || null,
         password: input.password,
         acceptedTerms: true,
         acceptedPrivacy: true,

@@ -1,3 +1,4 @@
+using System.Linq;
 using Esotera.Application.DTOs.Auth;
 using FluentValidation;
 
@@ -20,12 +21,23 @@ public class RegisterRequestValidator : AbstractValidator<RegisterRequest>
             .NotEmpty().WithMessage("Senha é obrigatória.")
             .MinimumLength(6).WithMessage("Senha deve ter no mínimo 6 caracteres.");
 
+        // Aceita máscara (ex.: 000.000.000-00); valida apenas dígitos.
         RuleFor(x => x.Cpf)
-            .Matches(@"^\d{11}$").When(x => !string.IsNullOrEmpty(x.Cpf))
+            .Must(cpf =>
+            {
+                if (string.IsNullOrWhiteSpace(cpf)) return true;
+                var digits = new string(cpf.Where(char.IsDigit).ToArray());
+                return digits.Length == 11;
+            })
             .WithMessage("CPF deve conter 11 dígitos.");
 
         RuleFor(x => x.Phone)
-            .Matches(@"^\d{10,11}$").When(x => !string.IsNullOrEmpty(x.Phone))
+            .Must(phone =>
+            {
+                if (string.IsNullOrWhiteSpace(phone)) return true;
+                var digits = new string(phone.Where(char.IsDigit).ToArray());
+                return digits.Length is 10 or 11;
+            })
             .WithMessage("Telefone deve conter 10 ou 11 dígitos.");
 
         RuleFor(x => x.AcceptedTerms)

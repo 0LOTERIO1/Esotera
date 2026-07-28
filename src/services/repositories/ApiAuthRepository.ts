@@ -23,6 +23,8 @@ export class ApiAuthRepository implements IAuthRepository {
       const result = await authApi.register(input);
       return result.user;
     } catch (error) {
+      // Preserva ApiError (errors por campo) para o formulário mapear CPF/e-mail corretamente.
+      if (error instanceof ApiError) throw error;
       throw new Error(toAuthUserMessage(error));
     }
   }

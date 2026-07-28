@@ -98,6 +98,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers["Content-Type"] = "application/json";
   }
 
+  const sentBearer = Boolean(headers.Authorization);
+
   let response: Response;
   try {
     response = await fetch(url, { ...init, headers });
@@ -109,12 +111,23 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     );
   }
 
-  if (response.status === 401 && auth) {
+  // Só invalida sessão se um JWT foi enviado e rejeitado (token inválido/expirado).
+  // Requisição sem Bearer que recebe 401 (ex.: página admin em modo mock) NÃO deve
+  // apagar o usuário persistido nem forçar logout.
+  if (response.status === 401 && auth && sentBearer) {
     sessionService.notifyUnauthorized();
     throw new ApiError(
       401,
       "Não autorizado",
       "Sessão expirada. Faça login novamente.",
+    );
+  }
+
+  if (response.status === 401 && auth && !sentBearer) {
+    throw new ApiError(
+      401,
+      "Não autorizado",
+      "É necessário estar autenticado na API para esta ação.",
     );
   }
 

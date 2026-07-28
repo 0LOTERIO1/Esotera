@@ -35,6 +35,7 @@ export const sessionService = {
   },
 
   notifyUnauthorized() {
+    // Limpa apenas o JWT; o handler decide se zera o usuário em memória.
     this.clear();
     unauthorizedHandler?.();
   },

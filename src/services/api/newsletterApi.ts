@@ -57,15 +57,40 @@ export const newsletterApi = {
     if (params.isActive === true) q.set("isActive", "true");
     if (params.isActive === false) q.set("isActive", "false");
     const qs = q.toString();
-    const base = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:5080";
+    const base =
+      process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+      "http://localhost:5080";
     const { sessionService } = await import("./sessionService");
+    const { ApiError } = await import("./apiClient");
     const token = sessionService.getToken();
+    if (!token) {
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "É necessário estar autenticado na API para esta ação.",
+      );
+    }
     const res = await fetch(
       `${base}/api/admin/newsletter/export${qs ? `?${qs}` : ""}`,
       {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       },
     );
+    if (res.status === 401) {
+      sessionService.notifyUnauthorized();
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "Sessão expirada. Faça login novamente.",
+      );
+    }
+    if (res.status === 403) {
+      throw new ApiError(
+        403,
+        "Proibido",
+        "Você não tem permissão para esta ação.",
+      );
+    }
     if (!res.ok) throw new Error("Falha ao exportar CSV.");
     return res.blob();
   },

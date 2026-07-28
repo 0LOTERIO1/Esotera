@@ -40,19 +40,20 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const hydrated = useAuthStore((s) => s.hydrated);
   const sessionReady = useAuthStore((s) => s.sessionReady);
   const storeName = useSettingsStore((s) => s.settings.storeName);
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role?.toLowerCase() === "admin";
   const authReady = hydrated && sessionReady;
 
   useEffect(() => {
     if (!authReady) return;
     if (!user) {
-      router.replace("/login?returnUrl=/admin");
+      const returnUrl = encodeURIComponent(pathname || "/admin");
+      router.replace(`/login?returnUrl=${returnUrl}`);
       return;
     }
-    if (user.role !== "admin") {
+    if (user.role.toLowerCase() !== "admin") {
       router.replace("/minha-conta");
     }
-  }, [authReady, user, router]);
+  }, [authReady, user, router, pathname]);
 
   if (!authReady) {
     return (

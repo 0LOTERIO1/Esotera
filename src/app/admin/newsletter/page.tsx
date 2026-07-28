@@ -7,22 +7,48 @@ import {
   newsletterApi,
   type NewsletterSubscription,
 } from "@/services/api/newsletterApi";
+import { ApiError } from "@/services/api/apiClient";
+import { sessionService } from "@/services/api/sessionService";
 import { formatDate } from "@/utils/format";
 import { useToastStore } from "@/stores/toastStore";
+import { useAuthStore } from "@/stores/authStore";
 
 export default function AdminNewsletterPage() {
   const push = useToastStore((s) => s.push);
+  const user = useAuthStore((s) => s.user);
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const sessionReady = useAuthStore((s) => s.sessionReady);
+  const authReady = hydrated && sessionReady;
+  const isAdmin = user?.role?.toLowerCase() === "admin";
+
   const [items, setItems] = useState<NewsletterSubscription[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    if (!authReady || !isAdmin) return;
+
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setError(null);
+
+      if (!sessionService.getToken()) {
+        if (!cancelled) {
+          setItems([]);
+          setTotal(0);
+          setError(
+            "A newsletter administrativa exige sessão na API (JWT). Faça login com NEXT_PUBLIC_DATA_MODE=api e tente novamente.",
+          );
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
         const res = await newsletterApi.adminList({
           search: search.trim() || undefined,
@@ -34,17 +60,30 @@ export default function AdminNewsletterPage() {
         setTotal(res.total);
       } catch (err) {
         if (cancelled) return;
-        push("error", err instanceof Error ? err.message : "Falha ao listar.");
+        // 403/erros isolados: não fazer logout — só informar
+        const message =
+          err instanceof ApiError
+            ? err.userMessage
+            : err instanceof Error
+              ? err.message
+              : "Falha ao listar inscritos.";
+        setError(message);
+        push("error", message);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [search, status, reloadKey, push]);
+  }, [authReady, isAdmin, search, status, reloadKey, push]);
 
   async function exportCsv() {
+    if (!sessionService.getToken()) {
+      push("error", "Sessão na API necessária para exportar.");
+      return;
+    }
     try {
       const blob = await newsletterApi.adminExportCsv({
         search: search.trim() || undefined,
@@ -56,9 +95,18 @@ export default function AdminNewsletterPage() {
       a.download = `newsletter-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      push("error", "Falha ao exportar CSV.");
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError ? err.userMessage : "Falha ao exportar CSV.",
+      );
     }
+  }
+
+  if (!authReady) {
+    return (
+      <p className="text-sm text-esotera-muted">Carregando sessão…</p>
+    );
   }
 
   return (
@@ -86,6 +134,12 @@ export default function AdminNewsletterPage() {
           </Button>
         </div>
       </div>
+
+      {error ? (
+        <p role="alert" className="mt-4 text-sm text-esotera-error">
+          {error}
+        </p>
+      ) : null}
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <FormField label="Pesquisar e-mail" id="nl-search">

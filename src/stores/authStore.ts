@@ -36,10 +36,12 @@ export const useAuthStore = create<AuthState>()(
       setHydrated: (value) => set({ hydrated: value }),
       restoreSession: async () => {
         sessionService.onUnauthorized(() => {
+          // Token rejeitado pela API após envio do Bearer.
           set({ user: null });
         });
 
         if (!isApiMode()) {
+          // Modo mock: não exige JWT.
           set({ sessionReady: true });
           return;
         }
@@ -94,7 +96,7 @@ export const useAuthStore = create<AuthState>()(
         if (!current) return;
         set({ user: { ...current, ...partial } });
       },
-      isAdmin: () => get().user?.role === "admin",
+      isAdmin: () => get().user?.role?.toLowerCase() === "admin",
       isAuthenticated: () => Boolean(get().user),
     }),
     {

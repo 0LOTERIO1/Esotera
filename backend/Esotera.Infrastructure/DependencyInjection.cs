@@ -30,6 +30,41 @@ public static class DependencyInjection
 
         BindCloudinaryOptions(services, configuration);
 
+        services.Configure<EmailOptions>(options =>
+        {
+            configuration.GetSection(EmailOptions.SectionName).Bind(options);
+            options.Enabled = ParseBool(configuration["Email:Enabled"] ?? configuration["EMAIL_ENABLED"]) ?? options.Enabled;
+            options.SmtpHost = FirstNonEmpty(options.SmtpHost, configuration["EMAIL_SMTP_HOST"], configuration["Email:SmtpHost"]);
+            options.SmtpUser = FirstNonEmpty(options.SmtpUser, configuration["EMAIL_SMTP_USER"], configuration["Email:SmtpUser"]);
+            options.SmtpPassword = FirstNonEmpty(options.SmtpPassword, configuration["EMAIL_SMTP_PASSWORD"], configuration["Email:SmtpPassword"]);
+            options.FromAddress = FirstNonEmpty(options.FromAddress, configuration["EMAIL_FROM_ADDRESS"], configuration["Email:FromAddress"])
+                ?? "esoteralivraria1@gmail.com";
+            options.FromName = FirstNonEmpty(options.FromName, configuration["EMAIL_FROM_NAME"], configuration["Email:FromName"])
+                ?? "Esotera";
+            options.FrontendBaseUrl = FirstNonEmpty(options.FrontendBaseUrl, configuration["FRONTEND_BASE_URL"], configuration["Email:FrontendBaseUrl"]);
+            if (int.TryParse(configuration["EMAIL_SMTP_PORT"] ?? configuration["Email:SmtpPort"], out var port))
+                options.SmtpPort = port;
+            var ssl = ParseBool(configuration["EMAIL_SMTP_USE_SSL"] ?? configuration["Email:SmtpUseSsl"]);
+            if (ssl.HasValue) options.SmtpUseSsl = ssl.Value;
+        });
+
+        services.Configure<MercadoPagoOptions>(options =>
+        {
+            configuration.GetSection(MercadoPagoOptions.SectionName).Bind(options);
+            options.AccessToken = FirstNonEmpty(
+                options.AccessToken,
+                configuration["MERCADO_PAGO_ACCESS_TOKEN"],
+                configuration["MercadoPago:AccessToken"]);
+            options.WebhookSecret = FirstNonEmpty(
+                options.WebhookSecret,
+                configuration["MERCADO_PAGO_WEBHOOK_SECRET"],
+                configuration["MercadoPago:WebhookSecret"]);
+            options.Environment = FirstNonEmpty(
+                options.Environment,
+                configuration["MERCADO_PAGO_ENVIRONMENT"],
+                configuration["MercadoPago:Environment"]) ?? "test";
+        });
+
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<ISimulatedShippingService, SimulatedShippingService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
@@ -39,6 +74,8 @@ public static class DependencyInjection
         {
             services.AddSingleton<FakeProductImageStorage>();
             services.AddSingleton<IProductImageStorage>(sp => sp.GetRequiredService<FakeProductImageStorage>());
+            services.AddSingleton<CapturingEmailSender>();
+            services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<CapturingEmailSender>());
         }
         else
         {
@@ -47,6 +84,14 @@ public static class DependencyInjection
                 services.AddScoped<IProductImageStorage, CloudinaryProductImageStorage>();
             else
                 services.AddScoped<IProductImageStorage, UnconfiguredProductImageStorage>();
+
+            services.AddScoped<IEmailSender>(sp =>
+            {
+                var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EmailOptions>>().Value;
+                if (opts.IsSmtpConfigured)
+                    return ActivatorUtilities.CreateInstance<SmtpEmailSender>(sp);
+                return ActivatorUtilities.CreateInstance<NullEmailSender>(sp);
+            });
         }
 
         services.AddScoped<IAuthService, AuthService>();
@@ -57,10 +102,20 @@ public static class DependencyInjection
         services.AddScoped<IStoreSettingsService, StoreSettingsService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IAdminQueryService, AdminQueryService>();
+        services.AddScoped<INewsletterService, NewsletterService>();
 
         services.AddScoped<DevSeed>();
 
         return services;
+    }
+
+    private static bool? ParseBool(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (bool.TryParse(value, out var b)) return b;
+        if (value is "1" or "yes" or "YES") return true;
+        if (value is "0" or "no" or "NO") return false;
+        return null;
     }
 
     private static void BindCloudinaryOptions(IServiceCollection services, IConfiguration configuration)

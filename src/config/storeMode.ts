@@ -20,7 +20,10 @@ export function isTestingStore(): boolean {
   return getStoreMode() === "testing";
 }
 
-/** Pagamento real (Mercado Pago) ainda não integrado nesta fase. */
+/** Pagamento real (Mercado Pago) ainda não integrado.
+ * Access Token fica só no backend (MERCADO_PAGO_ACCESS_TOKEN).
+ * Public Key: NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY — ver docs/MERCADO_PAGO.md
+ */
 export function isRealPaymentEnabled(): boolean {
   return false;
 }

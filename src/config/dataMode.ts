@@ -2,8 +2,8 @@ export type DataMode = "mock" | "api";
 
 /**
  * Fonte de dados do frontend.
- * Padrão: mock (localStorage) — usado na Vercel até existir API pública.
- * Defina NEXT_PUBLIC_DATA_MODE=api apenas em desenvolvimento local com a API rodando.
+ * Em produção (Vercel), use NEXT_PUBLIC_DATA_MODE=api com NEXT_PUBLIC_API_URL apontando para a API no Render.
+ * O catálogo oficial deve vir do Neon via API/admin — não de products.ts.
  */
 export function getDataMode(): DataMode {
   const mode = process.env.NEXT_PUBLIC_DATA_MODE?.toLowerCase();

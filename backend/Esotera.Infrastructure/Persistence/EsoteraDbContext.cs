@@ -19,6 +19,8 @@ public class EsoteraDbContext : DbContext
     public DbSet<CouponUsage> CouponUsages => Set<CouponUsage>();
     public DbSet<StoreSettings> StoreSettings => Set<StoreSettings>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<NewsletterSubscription> NewsletterSubscriptions => Set<NewsletterSubscription>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

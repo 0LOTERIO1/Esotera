@@ -8,6 +8,15 @@ export type ProductImageMeta = {
   createdAt?: string;
 };
 
+export type ProductVariation = {
+  id: string;
+  name: string;
+  price: number;
+  isAvailable: boolean;
+  sku?: string | null;
+  imageUrl?: string | null;
+};
+
 export type Product = {
   id: string;
   slug: string;
@@ -21,7 +30,7 @@ export type Product = {
   productImages?: ProductImageMeta[];
   features: string[];
   packageContents?: string[];
-  variations?: string[];
+  variations?: ProductVariation[];
   isFeatured: boolean;
   isAvailable: boolean;
   isArchived?: boolean;

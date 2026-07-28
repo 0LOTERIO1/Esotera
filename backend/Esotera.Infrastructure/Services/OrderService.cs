@@ -116,24 +116,41 @@ public class OrderService : IOrderService
                 if (item.Quantity < 1 || item.Quantity > 99)
                     throw new ValidationException("items", "Quantidade deve estar entre 1 e 99.");
 
-                var lineTotal = product.Price * item.Quantity;
-                subtotal += lineTotal;
-
-                var primaryImage = product.Images
+                var variations = ProductVariationJson.Parse(product.VariationsJson, product.Price);
+                decimal unitPrice = product.Price;
+                string? variationLabel = item.Variation;
+                string? imageUrl = product.Images
                     .OrderByDescending(i => i.IsPrimary)
                     .ThenBy(i => i.SortOrder)
                     .Select(i => i.SecureUrl)
                     .FirstOrDefault();
+
+                if (variations.Length > 0)
+                {
+                    var selected = ProductVariationJson.Resolve(variations, item.Variation);
+                    if (selected == null)
+                        throw new ValidationException("items", $"Selecione uma variação válida para '{product.Name}'.");
+                    if (!selected.IsAvailable)
+                        throw new ValidationException("items", $"A variação '{selected.Name}' não está disponível.");
+
+                    unitPrice = selected.Price;
+                    variationLabel = selected.Name;
+                    if (!string.IsNullOrWhiteSpace(selected.ImageUrl))
+                        imageUrl = selected.ImageUrl;
+                }
+
+                var lineTotal = unitPrice * item.Quantity;
+                subtotal += lineTotal;
 
                 orderItems.Add(new OrderItem
                 {
                     Id = Guid.NewGuid(),
                     ProductId = product.Id,
                     ProductName = product.Name,
-                    UnitPrice = product.Price,
+                    UnitPrice = unitPrice,
                     Quantity = item.Quantity,
-                    Variation = item.Variation,
-                    ImageUrl = primaryImage,
+                    Variation = variationLabel,
+                    ImageUrl = imageUrl,
                     LineTotal = lineTotal
                 });
             }

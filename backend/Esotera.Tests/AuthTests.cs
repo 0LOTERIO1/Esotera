@@ -24,7 +24,9 @@ public class AuthTests : IClassFixture<CustomWebApplicationFactory>
             $"novo{Guid.NewGuid():N}@test.com",
             "senha123",
             "11122233344",
-            "11999887766"
+            "11999887766",
+            AcceptedTerms: true,
+            AcceptedPrivacy: true
         );
 
         var response = await _client.PostAsJsonAsync("/api/auth/register", request);
@@ -44,7 +46,9 @@ public class AuthTests : IClassFixture<CustomWebApplicationFactory>
             "cliente@esotera.demo",
             "senha123",
             null,
-            null
+            null,
+            AcceptedTerms: true,
+            AcceptedPrivacy: true
         );
 
         var response = await _client.PostAsJsonAsync("/api/auth/register", request);

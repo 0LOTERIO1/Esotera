@@ -31,7 +31,26 @@ export const initialProducts: Product[] = [
       "78 cartas do Tarô de Waite",
       "Livro / manual explicativo",
     ],
-    variations: ["Tarô + Livro", "Somente Tarô", "Somente Livro"],
+    variations: [
+      {
+        id: "trad-taro-livro",
+        name: "Tarô + Livro",
+        price: 39.9,
+        isAvailable: true,
+      },
+      {
+        id: "trad-somente-taro",
+        name: "Somente Tarô",
+        price: 39.9,
+        isAvailable: true,
+      },
+      {
+        id: "trad-somente-livro",
+        name: "Somente Livro",
+        price: 0,
+        isAvailable: false,
+      },
+    ],
     isFeatured: true,
     isAvailable: true,
   },
@@ -102,12 +121,12 @@ export const initialProducts: Product[] = [
   },
   {
     id: "prod-waite-iniciante",
-    slug: "rider-waite-taro-para-iniciante",
-    name: "Rider Waite Tarô Esotera para Iniciante",
+    slug: "rider-waite-taro-esotera-para-iniciante",
+    name: "Rider Waite Tarô Esotera para Iniciante com 78 Cartas, Ilustrações e Explicações nas Cartas",
     shortDescription:
       "Edição para iniciantes com ilustrações e explicações nas cartas.",
     description:
-      "Rider Waite para iniciantes com 78 cartas ilustradas e explicativas, pensado para facilitar o aprendizado.",
+      "Rider Waite para iniciantes com 78 cartas ilustradas e explicativas. Escolha entre somente o tarô ou o kit com livro.",
     price: 54.9,
     category: "Tarôs",
     images: ["/images/products/waite-iniciante.png"],
@@ -117,9 +136,32 @@ export const initialProducts: Product[] = [
       "Ideal para iniciantes",
     ],
     packageContents: ["78 cartas ilustradas"],
-    isFeatured: false,
+    variations: [
+      {
+        id: "var-somente-taro",
+        name: "Somente Tarô",
+        price: 54.9,
+        isAvailable: true,
+        sku: "SKU-WAITE-TAROT",
+      },
+      {
+        id: "var-taro-livro",
+        name: "Tarô + Livro",
+        price: 79.9,
+        isAvailable: true,
+        sku: "SKU-WAITE-KIT",
+      },
+      {
+        id: "var-somente-livro",
+        name: "Somente Livro",
+        price: 0,
+        isAvailable: false,
+        sku: "SKU-WAITE-LIVRO",
+      },
+    ],
+    isFeatured: true,
     isAvailable: true,
-    isDemo: true,
+    isDemo: false,
   },
 ];
 

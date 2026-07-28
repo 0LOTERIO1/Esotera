@@ -10,6 +10,7 @@ import { QuantitySelector } from "@/components/ui/QuantitySelector";
 import { Price } from "@/components/ui/Price";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { storeConfig } from "@/config/store";
 import { CouponForm } from "@/components/cart/CouponForm";
 import { OrderSummary } from "@/components/cart/OrderSummary";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -83,7 +84,7 @@ export default function CartPage() {
                       </p>
                     ) : null}
                     <p className="mt-1">
-                      <Price value={line.product.price} />
+                      <Price value={line.unitPrice} />
                     </p>
                   </div>
                   <button
@@ -111,6 +112,7 @@ export default function CartPage() {
 
         <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <OrderSummary />
+          <p className="text-xs text-esotera-muted">{storeConfig.includedCardNotice}</p>
           <ButtonLink href={checkoutHref} className="w-full">
             Ir para o checkout
           </ButtonLink>

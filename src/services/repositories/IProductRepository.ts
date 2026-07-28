@@ -1,4 +1,4 @@
-import type { Product, ProductImageMeta } from "@/types";
+import type { Product, ProductImageMeta, ProductVariation } from "@/types";
 
 export type ProductInput = {
   id?: string;
@@ -12,7 +12,7 @@ export type ProductInput = {
   images: string[];
   features: string[];
   packageContents?: string[];
-  variations?: string[];
+  variations?: ProductVariation[];
   isFeatured: boolean;
   isAvailable: boolean;
   isDemo?: boolean;

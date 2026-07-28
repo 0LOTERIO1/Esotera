@@ -131,7 +131,7 @@ public class ProductService : IProductService
             FeaturesJson = SerializeArray(request.Features),
             PackageContentsJson = SerializeArray(request.PackageContents),
             VariationsJson = request.Variations != null
-                ? JsonSerializer.Serialize(request.Variations, JsonOptions)
+                ? ProductVariationJson.Serialize(NormalizeVariations(request.Variations, request.Price))
                 : null,
             IsFeatured = request.IsFeatured,
             IsAvailable = request.IsAvailable,
@@ -186,7 +186,8 @@ public class ProductService : IProductService
         if (request.Features != null) product.FeaturesJson = SerializeArray(request.Features);
         if (request.PackageContents != null) product.PackageContentsJson = SerializeArray(request.PackageContents);
         if (request.Variations != null)
-            product.VariationsJson = JsonSerializer.Serialize(request.Variations, JsonOptions);
+            product.VariationsJson = ProductVariationJson.Serialize(
+                NormalizeVariations(request.Variations, request.Price ?? product.Price));
         if (request.IsFeatured.HasValue) product.IsFeatured = request.IsFeatured.Value;
         if (request.IsAvailable.HasValue) product.IsAvailable = request.IsAvailable.Value;
         if (request.IsDemo.HasValue) product.IsDemo = request.IsDemo.Value;
@@ -477,6 +478,23 @@ public class ProductService : IProductService
     private static string? SerializeArray(string[]? values) =>
         values != null ? JsonSerializer.Serialize(values, JsonOptions) : null;
 
+    private static ProductVariationDto[] NormalizeVariations(
+        ProductVariationDto[] variations,
+        decimal fallbackPrice)
+    {
+        return variations
+            .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+            .Select(v => v with
+            {
+                Id = string.IsNullOrWhiteSpace(v.Id) ? Guid.NewGuid().ToString("N") : v.Id.Trim(),
+                Name = v.Name.Trim(),
+                Price = v.Price > 0 ? v.Price : (v.IsAvailable ? fallbackPrice : 0),
+                Sku = string.IsNullOrWhiteSpace(v.Sku) ? null : v.Sku.Trim(),
+                ImageUrl = string.IsNullOrWhiteSpace(v.ImageUrl) ? null : v.ImageUrl.Trim()
+            })
+            .ToArray();
+    }
+
     private static ProductImageDto MapImageDto(ProductImage image) =>
         new(
             image.Id,
@@ -501,7 +519,7 @@ public class ProductService : IProductService
             packageContents = JsonSerializer.Deserialize<string[]>(product.PackageContentsJson, JsonOptions);
 
         if (!string.IsNullOrEmpty(product.VariationsJson))
-            variations = JsonSerializer.Deserialize<ProductVariationDto[]>(product.VariationsJson, JsonOptions);
+            variations = ProductVariationJson.Parse(product.VariationsJson, product.Price);
 
         var images = product.Images
             .OrderByDescending(i => i.IsPrimary)

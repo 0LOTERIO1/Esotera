@@ -93,9 +93,12 @@ function LoginForm() {
       </form>
 
       <p className="mt-4 text-center text-sm text-esotera-muted">
-        <span className="cursor-default text-esotera-muted/80">
+        <Link
+          href="/recuperar-senha"
+          className="text-esotera-primary hover:underline"
+        >
           Esqueci minha senha
-        </span>
+        </Link>
       </p>
 
       <p className="mt-6 text-center text-sm text-esotera-muted">

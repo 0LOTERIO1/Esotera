@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useCartStore } from "@/stores/cartStore";
 import { useProductsStore } from "@/stores/productsStore";
+import { resolveUnitPrice } from "@/utils/productPricing";
 
 export function useCartTotals() {
   const items = useCartStore((s) => s.items);
@@ -14,10 +15,12 @@ export function useCartTotals() {
       .map((item) => {
         const product = products.find((p) => p.id === item.productId);
         if (!product) return null;
+        const unitPrice = resolveUnitPrice(product, item.variation);
         return {
           ...item,
           product,
-          lineTotal: product.price * item.quantity,
+          unitPrice,
+          lineTotal: unitPrice * item.quantity,
         };
       })
       .filter(Boolean) as Array<{
@@ -25,6 +28,7 @@ export function useCartTotals() {
       quantity: number;
       variation?: string;
       product: (typeof products)[number];
+      unitPrice: number;
       lineTotal: number;
     }>;
 

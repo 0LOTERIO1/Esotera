@@ -187,12 +187,12 @@ export default function AccountPage() {
           Troca ou devolução
         </h2>
         <p className="mt-2 text-sm text-esotera-muted">
-          Em breve você poderá solicitar troca ou devolução por aqui. Enquanto
-          isso, acompanhe seus pedidos nesta página.
+          Solicitações são feitas pelo contato com a equipe. Veja o passo a
+          passo completo.
         </p>
-        <Button type="button" variant="secondary" className="mt-4" disabled>
-          Em breve
-        </Button>
+        <ButtonLink href="/trocas-e-devolucoes" variant="secondary" className="mt-4">
+          Trocas e devoluções
+        </ButtonLink>
       </section>
     </div>
   );

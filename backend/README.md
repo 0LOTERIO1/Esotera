@@ -181,9 +181,29 @@ J3: R$ 12,00 (configurável em StoreSettings)
 - Uso único por cliente
 - Não aplica no frete
 
+## E-mail (recuperação de senha)
+
+Configure no Render (sem versionar senhas):
+
+- `EMAIL_ENABLED=true`
+- `EMAIL_SMTP_HOST` (ex.: `smtp.gmail.com`)
+- `EMAIL_SMTP_PORT=587`
+- `EMAIL_SMTP_USE_SSL=true`
+- `EMAIL_SMTP_USER`
+- `EMAIL_SMTP_PASSWORD` (app password; nunca no repositório)
+- `EMAIL_FROM_ADDRESS=esoteralivraria1@gmail.com`
+- `EMAIL_FROM_NAME=Esotera`
+- `FRONTEND_BASE_URL=https://esotera.vercel.app`
+
+Sem SMTP configurado, a API ainda responde de forma genérica ao forgot-password, mas o e-mail **não** é entregue (NullEmailSender registra aviso).
+
+## Mercado Pago
+
+Ver `docs/MERCADO_PAGO.md` na raiz. Access Token apenas no backend (`MERCADO_PAGO_ACCESS_TOKEN`).
+
 ## TODO
 
-- [ ] Substituir LocalFileImageStorage por Azure Blob/S3 em produção
-- [ ] Implementar webhook de pagamento real
+- [ ] Webhook e criação de pagamento Mercado Pago
+- [ ] Disparo de campanhas de newsletter
 - [ ] Adicionar cache com Redis
 - [ ] Implementar tracking de pedidos

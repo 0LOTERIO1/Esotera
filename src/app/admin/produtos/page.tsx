@@ -17,7 +17,7 @@ import {
 import { isApiMode } from "@/config/dataMode";
 import { getProductRepository } from "@/services/repositories";
 import { productsApi } from "@/services/api/productsApi";
-import type { Product, ProductImageMeta } from "@/types";
+import type { Product, ProductImageMeta, ProductVariation } from "@/types";
 
 const emptyForm = {
   name: "",
@@ -42,6 +42,33 @@ function splitList(value: string): string[] {
     .split(/[,;\n]/)
     .map((f) => f.trim())
     .filter(Boolean);
+}
+
+/** Formato: Nome|preço|1ou0 (disponível). Uma variação por linha. */
+function parseVariations(value: string, fallbackPrice: number): ProductVariation[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const parts = line.split("|").map((p) => p.trim());
+      const name = parts[0] || `Opção ${index + 1}`;
+      const price = Number(parts[1]?.replace(",", ".")) || fallbackPrice;
+      const available = parts[2] === undefined ? true : parts[2] !== "0";
+      return {
+        id: `var-${index + 1}-${name.toLowerCase().replace(/\s+/g, "-")}`,
+        name,
+        price,
+        isAvailable: available,
+      };
+    });
+}
+
+function formatVariations(variations?: ProductVariation[]): string {
+  if (!variations?.length) return "";
+  return variations
+    .map((v) => `${v.name}|${v.price}|${v.isAvailable ? 1 : 0}`)
+    .join("\n");
 }
 
 function slugify(name: string): string {
@@ -195,7 +222,7 @@ export default function AdminProductsPage() {
         categoryId: detail.categoryId ?? "",
         features: detail.features.join(", "),
         packageContents: (detail.packageContents ?? []).join(", "),
-        variations: (detail.variations ?? []).join(", "),
+        variations: formatVariations(detail.variations),
         isFeatured: detail.isFeatured,
         isAvailable: detail.isAvailable,
       });
@@ -277,7 +304,7 @@ export default function AdminProductsPage() {
           images: [imagePreview as string],
           features: splitList(form.features),
           packageContents: splitList(form.packageContents),
-          variations: splitList(form.variations),
+          variations: parseVariations(form.variations, price),
           isFeatured: form.isFeatured,
           isAvailable: form.isAvailable,
           isDemo: false,
@@ -680,10 +707,15 @@ export default function AdminProductsPage() {
                   onChange={(e) => setForm({ ...form, packageContents: e.target.value })}
                 />
               </FormField>
-              <FormField label="Variações" id="p-var" hint="Separe por vírgula">
-                <input
+              <FormField
+                label="Variações"
+                id="p-var"
+                hint="Uma por linha: Nome|preço|1 (disponível) ou 0 (indisponível). Ex.: Somente Tarô|54.90|1"
+              >
+                <textarea
                   id="p-var"
                   className={inputClassName}
+                  rows={4}
                   value={form.variations}
                   onChange={(e) => setForm({ ...form, variations: e.target.value })}
                 />

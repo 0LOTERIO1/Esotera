@@ -33,6 +33,7 @@ import {
   canCompleteCheckoutWithoutRealPayment,
   isRealPaymentEnabled,
 } from "@/config/storeMode";
+import { resolveUnitPrice } from "@/utils/productPricing";
 
 const steps = [
   "Identificação",
@@ -286,7 +287,7 @@ export default function CheckoutPage() {
         items: lines.map((l) => ({
           productId: l.productId,
           name: l.product.name,
-          price: l.product.price,
+          price: resolveUnitPrice(l.product, l.variation),
           quantity: l.quantity,
           variation: l.variation,
           image: l.product.images[0],
@@ -481,7 +482,8 @@ export default function CheckoutPage() {
                     <div>
                       <p className="text-esotera-text">{l.product.name}</p>
                       <p>
-                        {l.quantity} × <Price value={l.product.price} />
+                        {l.quantity} ×{" "}
+                        <Price value={resolveUnitPrice(l.product, l.variation)} />
                       </p>
                     </div>
                   </li>

@@ -11,6 +11,10 @@ public class User
     public string? Cpf { get; set; }
     public string? Phone { get; set; }
     public UserRole Role { get; set; } = UserRole.Customer;
+    public DateTime? TermsAcceptedAtUtc { get; set; }
+    public DateTime? PrivacyAcceptedAtUtc { get; set; }
+    public string? TermsVersion { get; set; }
+    public string? PrivacyVersion { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 

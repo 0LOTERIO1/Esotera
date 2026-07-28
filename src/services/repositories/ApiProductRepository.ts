@@ -5,7 +5,7 @@ import type {
   ProductInput,
   ProductListFilters,
 } from "./IProductRepository";
-import type { Product, ProductImageMeta } from "@/types";
+import type { Product, ProductImageMeta, ProductVariation } from "@/types";
 
 function slugify(name: string): string {
   return name
@@ -17,9 +17,16 @@ function slugify(name: string): string {
     .slice(0, 180);
 }
 
-function toVariationDtos(variations?: string[]) {
+function toVariationDtos(variations?: ProductVariation[]) {
   if (!variations?.length) return null;
-  return [{ type: "Opções", options: variations }];
+  return variations.map((v) => ({
+    id: v.id || crypto.randomUUID().replace(/-/g, ""),
+    name: v.name,
+    price: v.price,
+    isAvailable: v.isAvailable,
+    sku: v.sku ?? null,
+    imageUrl: v.imageUrl ?? null,
+  }));
 }
 
 function mapImage(api: {

@@ -1,0 +1,37 @@
+namespace Esotera.Application.Options;
+
+public class EmailOptions
+{
+    public const string SectionName = "Email";
+
+    public bool Enabled { get; set; }
+    public string? SmtpHost { get; set; }
+    public int SmtpPort { get; set; } = 587;
+    public bool SmtpUseSsl { get; set; } = true;
+    public string? SmtpUser { get; set; }
+    public string? SmtpPassword { get; set; }
+    public string FromAddress { get; set; } = "esoteralivraria1@gmail.com";
+    public string FromName { get; set; } = "Esotera";
+    /// <summary>Base URL do frontend (ex.: https://esotera.vercel.app) para montar links.</summary>
+    public string? FrontendBaseUrl { get; set; }
+
+    public bool IsSmtpConfigured =>
+        Enabled
+        && !string.IsNullOrWhiteSpace(SmtpHost)
+        && !string.IsNullOrWhiteSpace(SmtpUser)
+        && !string.IsNullOrWhiteSpace(SmtpPassword)
+        && !string.IsNullOrWhiteSpace(FromAddress);
+}
+
+public class MercadoPagoOptions
+{
+    public const string SectionName = "MercadoPago";
+
+    /// <summary>Access Token — SOMENTE backend. Nunca NEXT_PUBLIC_.</summary>
+    public string? AccessToken { get; set; }
+    public string? WebhookSecret { get; set; }
+    /// <summary>test | production</summary>
+    public string Environment { get; set; } = "test";
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(AccessToken);
+}

@@ -334,7 +334,10 @@ function RegisterForm() {
               className="mt-1"
             />
             <span>
-              Aceito os termos de uso
+              Aceito os{" "}
+              <Link href="/termos" className="text-esotera-primary hover:underline">
+                termos de uso
+              </Link>
               {errors.terms ? (
                 <span className="mt-1 block text-xs text-esotera-error" role="alert">
                   {errors.terms}
@@ -350,7 +353,13 @@ function RegisterForm() {
               className="mt-1"
             />
             <span>
-              Aceito a política de privacidade
+              Aceito a{" "}
+              <Link
+                href="/privacidade"
+                className="text-esotera-primary hover:underline"
+              >
+                política de privacidade
+              </Link>
               {errors.privacy ? (
                 <span className="mt-1 block text-xs text-esotera-error" role="alert">
                   {errors.privacy}

@@ -23,6 +23,8 @@ public class DevSeed
     private static readonly Guid ProductLivro78Id = Guid.Parse("11111111-1111-1111-1111-111111111105");
     private static readonly Guid ProductToadaId = Guid.Parse("11111111-1111-1111-1111-111111111106");
 
+    private static readonly Guid ProductWaiteInicianteId = Guid.Parse("11111111-1111-1111-1111-111111111107");
+
     private static readonly Guid AdminUserId = Guid.Parse("22222222-2222-2222-2222-222222222201");
     private static readonly Guid CustomerUserId = Guid.Parse("22222222-2222-2222-2222-222222222202");
 
@@ -41,6 +43,7 @@ public class DevSeed
 
         await SeedCategoriesAsync();
         await SeedProductsAsync();
+        await EnsureWaiteInicianteProductAsync();
         await SeedUsersAsync();
         await SeedCouponsAsync();
         await SeedStoreSettingsAsync();
@@ -85,8 +88,8 @@ public class DevSeed
                 CategoryId = CategoryTarosId,
                 FeaturesJson = "[\"78 cartas\",\"Ilustrações clássicas\",\"Acabamento premium\",\"Caixa rígida\"]",
                 PackageContentsJson = "[\"78 cartas de tarô\",\"Livreto explicativo\",\"Caixa de apresentação\"]",
-                VariationsJson = "[{\"type\":\"Idioma\",\"options\":[\"Português\",\"Inglês\"]}]",
-                IsFeatured = true,
+                VariationsJson = null,
+                IsFeatured = false,
                 IsAvailable = true,
                 IsDemo = true,
                 CreatedAtUtc = now,
@@ -95,6 +98,28 @@ public class DevSeed
                 {
                     new() { Id = Guid.NewGuid(), SecureUrl = "/images/products/waite-tradicional-1.jpg", SortOrder = 1, IsPrimary = true, CreatedAtUtc = now },
                     new() { Id = Guid.NewGuid(), SecureUrl = "/images/products/waite-tradicional-2.jpg", SortOrder = 2, IsPrimary = false, CreatedAtUtc = now }
+                }
+            },
+            new Product
+            {
+                Id = ProductWaiteInicianteId,
+                Slug = "rider-waite-taro-esotera-para-iniciante",
+                Name = "Rider Waite Tarô Esotera para Iniciante com 78 Cartas, Ilustrações e Explicações nas Cartas",
+                ShortDescription = "Edição para iniciantes com ilustrações e explicações nas cartas.",
+                Description = "Rider Waite Tarô Esotera para iniciantes com 78 cartas ilustradas e explicativas. Escolha entre somente o tarô ou o kit com livro.",
+                Price = 54.90m,
+                CategoryId = CategoryTarosId,
+                FeaturesJson = "[\"78 cartas\",\"Ilustrações e explicações nas cartas\",\"Ideal para iniciantes\"]",
+                PackageContentsJson = "[\"78 cartas ilustradas\"]",
+                VariationsJson = """[{"id":"var-somente-taro","name":"Somente Tarô","price":54.90,"isAvailable":true,"sku":"SKU-WAITE-TAROT"},{"id":"var-taro-livro","name":"Tarô + Livro","price":79.90,"isAvailable":true,"sku":"SKU-WAITE-KIT"},{"id":"var-somente-livro","name":"Somente Livro","price":0,"isAvailable":false,"sku":"SKU-WAITE-LIVRO"}]""",
+                IsFeatured = true,
+                IsAvailable = true,
+                IsDemo = false,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+                Images = new List<ProductImage>
+                {
+                    new() { Id = Guid.NewGuid(), SecureUrl = "/images/products/waite-iniciante.png", SortOrder = 1, IsPrimary = true, CreatedAtUtc = now }
                 }
             },
             new Product
@@ -129,7 +154,7 @@ public class DevSeed
                 CategoryId = CategoryTarosId,
                 FeaturesJson = "[\"78 cartas\",\"Arte detalhada\",\"Simbolismo profundo\",\"Edição de luxo\"]",
                 PackageContentsJson = "[\"78 cartas de tarô\",\"Livro completo de interpretações\",\"Caixa premium\"]",
-                VariationsJson = "[{\"type\":\"Tamanho\",\"options\":[\"Standard\",\"Grande\"]}]",
+                VariationsJson = null,
                 IsFeatured = true,
                 IsAvailable = true,
                 IsDemo = true,
@@ -194,7 +219,7 @@ public class DevSeed
                 CategoryId = CategoryAcessoriosId,
                 FeaturesJson = "[\"Veludo premium\",\"Bordados à mão\",\"60x60cm\",\"Lavável\"]",
                 PackageContentsJson = "[\"Toalha de veludo\",\"Saquinho de proteção\"]",
-                VariationsJson = "[{\"type\":\"Cor\",\"options\":[\"Roxo\",\"Preto\",\"Azul Marinho\"]}]",
+                VariationsJson = null,
                 IsFeatured = false,
                 IsAvailable = true,
                 IsDemo = true,
@@ -210,6 +235,69 @@ public class DevSeed
         _context.Products.AddRange(products);
         await _context.SaveChangesAsync();
         _logger.LogInformation("Produtos criados.");
+    }
+
+    /// <summary>
+    /// Garante o produto de referência com variações e preços confirmados (idempotente).
+    /// </summary>
+    private async Task EnsureWaiteInicianteProductAsync()
+    {
+        const string slug = "rider-waite-taro-esotera-para-iniciante";
+        var now = DateTime.UtcNow;
+        var variationsJson =
+            """[{"id":"var-somente-taro","name":"Somente Tarô","price":54.90,"isAvailable":true,"sku":"SKU-WAITE-TAROT"},{"id":"var-taro-livro","name":"Tarô + Livro","price":79.90,"isAvailable":true,"sku":"SKU-WAITE-KIT"},{"id":"var-somente-livro","name":"Somente Livro","price":0,"isAvailable":false,"sku":"SKU-WAITE-LIVRO"}]""";
+
+        var categoryId = await _context.Categories
+            .Where(c => c.Slug == "taros")
+            .Select(c => c.Id)
+            .FirstOrDefaultAsync();
+        if (categoryId == Guid.Empty)
+            categoryId = CategoryTarosId;
+
+        var product = await _context.Products
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Slug == slug || p.Id == ProductWaiteInicianteId);
+
+        if (product == null)
+        {
+            product = new Product
+            {
+                Id = ProductWaiteInicianteId,
+                Slug = slug,
+                CategoryId = categoryId,
+                CreatedAtUtc = now,
+                Images = new List<ProductImage>
+                {
+                    new()
+                    {
+                        Id = Guid.NewGuid(),
+                        SecureUrl = "/images/products/waite-iniciante.png",
+                        SortOrder = 1,
+                        IsPrimary = true,
+                        CreatedAtUtc = now
+                    }
+                }
+            };
+            _context.Products.Add(product);
+        }
+
+        product.Slug = slug;
+        product.Name = "Rider Waite Tarô Esotera para Iniciante com 78 Cartas, Ilustrações e Explicações nas Cartas";
+        product.ShortDescription = "Edição para iniciantes com ilustrações e explicações nas cartas.";
+        product.Description = "Rider Waite Tarô Esotera para iniciantes com 78 cartas ilustradas e explicativas. Escolha entre somente o tarô ou o kit com livro.";
+        product.Price = 54.90m;
+        product.CategoryId = categoryId;
+        product.FeaturesJson = "[\"78 cartas\",\"Ilustrações e explicações nas cartas\",\"Ideal para iniciantes\"]";
+        product.PackageContentsJson = "[\"78 cartas ilustradas\"]";
+        product.VariationsJson = variationsJson;
+        product.IsFeatured = true;
+        product.IsAvailable = true;
+        product.IsDemo = false;
+        product.IsArchived = false;
+        product.UpdatedAtUtc = now;
+
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Produto de referência Waite Iniciante sincronizado.");
     }
 
     private async Task SeedUsersAsync()

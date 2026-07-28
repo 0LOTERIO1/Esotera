@@ -1,5 +1,5 @@
 import { apiClient, ApiError } from "./apiClient";
-import type { Product, ProductImageMeta } from "@/types";
+import type { Product, ProductImageMeta, ProductVariation } from "@/types";
 import {
   normalizeProductImageUrl,
   PRODUCT_IMAGE_PLACEHOLDER,
@@ -45,7 +45,17 @@ export type ApiProductDetail = {
   images: Array<string | ApiProductImage>;
   features?: string[] | null;
   packageContents?: string[] | null;
-  variations?: Array<{ type: string; options: string[] }> | null;
+  variations?: Array<
+    | { type: string; options: string[] }
+    | {
+        id: string;
+        name: string;
+        price: number;
+        isAvailable?: boolean;
+        sku?: string | null;
+        imageUrl?: string | null;
+      }
+  > | null;
   isFeatured: boolean;
   isAvailable: boolean;
   isArchived?: boolean;
@@ -62,12 +72,36 @@ export type ApiCategory = {
   slug: string;
 };
 
-function flattenVariations(
-  variations?: Array<{ type: string; options: string[] }> | null,
-): string[] | undefined {
+function mapVariations(
+  variations: ApiProductDetail["variations"],
+  fallbackPrice: number,
+): ProductVariation[] | undefined {
   if (!variations?.length) return undefined;
-  const options = variations.flatMap((v) => v.options ?? []);
-  return options.length ? options : undefined;
+  const mapped: ProductVariation[] = [];
+  for (const v of variations) {
+    if ("name" in v && typeof v.name === "string") {
+      mapped.push({
+        id: v.id || v.name,
+        name: v.name,
+        price: typeof v.price === "number" && v.price > 0 ? v.price : fallbackPrice,
+        isAvailable: v.isAvailable !== false,
+        sku: v.sku,
+        imageUrl: v.imageUrl,
+      });
+      continue;
+    }
+    if ("options" in v && Array.isArray(v.options)) {
+      for (const opt of v.options) {
+        mapped.push({
+          id: opt,
+          name: opt,
+          price: fallbackPrice,
+          isAvailable: true,
+        });
+      }
+    }
+  }
+  return mapped.length ? mapped : undefined;
 }
 
 function mapImageMeta(img: ApiProductImage): ProductImageMeta {
@@ -146,7 +180,7 @@ export function mapProductDetail(api: ApiProductDetail): Product {
     productImages: metas,
     features: api.features ?? [],
     packageContents: api.packageContents ?? undefined,
-    variations: flattenVariations(api.variations),
+    variations: mapVariations(api.variations, api.price),
     isFeatured: api.isFeatured,
     isAvailable: api.isAvailable,
     isArchived: api.isArchived ?? false,

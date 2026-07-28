@@ -86,6 +86,8 @@ export const authApi = {
         cpf: input.cpf,
         phone: input.phone,
         password: input.password,
+        acceptedTerms: true,
+        acceptedPrivacy: true,
       },
       { auth: false },
     );
@@ -94,6 +96,22 @@ export const authApi = {
       token: response.token,
       user: mapApiUser(response.user, input.address),
     };
+  },
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return apiClient.post(
+      "/api/auth/forgot-password",
+      { email },
+      { auth: false },
+    );
+  },
+
+  async resetPassword(input: {
+    token: string;
+    newPassword: string;
+    confirmPassword: string;
+  }): Promise<{ message: string }> {
+    return apiClient.post("/api/auth/reset-password", input, { auth: false });
   },
 };
 

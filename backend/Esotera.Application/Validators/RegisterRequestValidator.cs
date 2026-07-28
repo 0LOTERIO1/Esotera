@@ -27,5 +27,11 @@ public class RegisterRequestValidator : AbstractValidator<RegisterRequest>
         RuleFor(x => x.Phone)
             .Matches(@"^\d{10,11}$").When(x => !string.IsNullOrEmpty(x.Phone))
             .WithMessage("Telefone deve conter 10 ou 11 dígitos.");
+
+        RuleFor(x => x.AcceptedTerms)
+            .Equal(true).WithMessage("Aceite os termos de uso para continuar.");
+
+        RuleFor(x => x.AcceptedPrivacy)
+            .Equal(true).WithMessage("Aceite a política de privacidade para continuar.");
     }
 }

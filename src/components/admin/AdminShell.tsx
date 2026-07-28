@@ -11,6 +11,7 @@ import {
   Ticket,
   Settings,
   ArrowLeft,
+  Mail,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -23,6 +24,7 @@ const nav = [
   { href: "/admin/pedidos", label: "Pedidos", icon: ShoppingBag },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/cupons", label: "Cupons", icon: Ticket },
+  { href: "/admin/newsletter", label: "Newsletter", icon: Mail },
   { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
 ];
 

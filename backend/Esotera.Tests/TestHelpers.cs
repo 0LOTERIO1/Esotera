@@ -46,7 +46,9 @@ public static class TestHelpers
             email,
             "password123",
             "12345678900",
-            "11999999999"
+            "11999999999",
+            AcceptedTerms: true,
+            AcceptedPrivacy: true
         ));
 
         response.EnsureSuccessStatusCode();

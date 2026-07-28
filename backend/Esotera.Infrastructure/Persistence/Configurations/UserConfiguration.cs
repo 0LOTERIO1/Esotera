@@ -34,6 +34,12 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.Phone)
             .HasMaxLength(20);
 
+        builder.Property(x => x.TermsVersion)
+            .HasMaxLength(32);
+
+        builder.Property(x => x.PrivacyVersion)
+            .HasMaxLength(32);
+
         builder.HasMany(x => x.Addresses)
             .WithOne(x => x.User)
             .HasForeignKey(x => x.UserId)

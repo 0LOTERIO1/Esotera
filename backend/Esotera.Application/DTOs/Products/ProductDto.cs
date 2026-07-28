@@ -33,11 +33,6 @@ public record ProductDto(
     DateTime UpdatedAtUtc
 );
 
-public record ProductVariationDto(
-    string Type,
-    string[] Options
-);
-
 public record ProductListDto(
     Guid Id,
     string Slug,

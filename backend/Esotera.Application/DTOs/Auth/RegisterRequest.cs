@@ -5,5 +5,7 @@ public record RegisterRequest(
     string Email,
     string Password,
     string? Cpf,
-    string? Phone
+    string? Phone,
+    bool AcceptedTerms = false,
+    bool AcceptedPrivacy = false
 );

@@ -11,6 +11,8 @@ import { QuantitySelector } from "@/components/ui/QuantitySelector";
 import { Button } from "@/components/ui/Button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductGrid } from "@/components/products/ProductGrid";
+import { storeConfig } from "@/config/store";
+import { findVariation } from "@/utils/productPricing";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -151,7 +153,12 @@ export default function ProductDetailPage({
             {product.name}
           </h1>
           <p className="mt-4">
-            <Price value={product.price} className="text-2xl" />
+            <Price
+              value={
+                findVariation(product, variation)?.price ?? product.price
+              }
+              className="text-2xl"
+            />
           </p>
           {!product.isAvailable ? (
             <p role="status" className="mt-4 text-sm text-esotera-error">
@@ -190,20 +197,31 @@ export default function ProductDetailPage({
 
           {product.variations?.length ? (
             <div className="mt-6">
-              <FormField label="Variação" id="variation">
+              <FormField label="Variação" id="variation" required>
                 <select
                   id="variation"
                   className={inputClassName}
                   value={variation}
-                  onChange={(e) => setVariation(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setVariation(next);
+                    const v = findVariation(product, next);
+                    if (v?.imageUrl) {
+                      const idx = product.images.findIndex((img) => img === v.imageUrl);
+                      if (idx >= 0) setActiveImage(idx);
+                    }
+                  }}
                   disabled={!product.isAvailable}
                 >
                   <option value="">Selecione</option>
-                  {product.variations.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
+                  {product.variations
+                    .filter((v) => v.isAvailable)
+                    .map((v) => (
+                      <option key={v.id} value={v.name}>
+                        {v.name} — R${" "}
+                        {v.price.toFixed(2).replace(".", ",")}
+                      </option>
+                    ))}
                 </select>
               </FormField>
             </div>
@@ -217,8 +235,19 @@ export default function ProductDetailPage({
             />
             <Button
               type="button"
-              disabled={!product.isAvailable}
+              disabled={
+                !product.isAvailable ||
+                (Boolean(product.variations?.some((v) => v.isAvailable)) &&
+                  !variation)
+              }
               onClick={() => {
+                if (
+                  product.variations?.some((v) => v.isAvailable) &&
+                  !variation
+                ) {
+                  push("error", "Selecione uma variação.");
+                  return;
+                }
                 addItem(product.id, quantity, variation || undefined);
                 push("success", "Produto adicionado ao carrinho.");
               }}
@@ -226,6 +255,10 @@ export default function ProductDetailPage({
               Adicionar ao carrinho
             </Button>
           </div>
+
+          <p className="mt-4 text-xs text-esotera-muted">
+            {storeConfig.includedCardNotice}
+          </p>
 
           <div className="mt-8 rounded-md border border-esotera-border bg-esotera-surface p-4 text-sm text-esotera-muted">
             <p className="font-medium text-esotera-secondary">

@@ -122,6 +122,7 @@ public static class DependencyInjection
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<DevSeed>();
         services.AddScoped<AdminBootstrap>();
+        services.AddScoped<CatalogBootstrap>();
 
         return services;
     }

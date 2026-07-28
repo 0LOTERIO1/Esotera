@@ -67,6 +67,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         try
         {
+            var catalog = services.GetRequiredService<CatalogBootstrap>();
+            catalog.RunAsync().GetAwaiter().GetResult();
+
             var seeder = services.GetRequiredService<DevSeed>();
             seeder.SeedAsync().GetAwaiter().GetResult();
         }

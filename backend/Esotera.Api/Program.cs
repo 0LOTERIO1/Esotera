@@ -178,6 +178,10 @@ try
         var context = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
         
         await context.Database.MigrateAsync();
+
+        // Categorias básicas (+ produto de referência) — sempre, inclusive produção.
+        var catalogBootstrap = scope.ServiceProvider.GetRequiredService<CatalogBootstrap>();
+        await catalogBootstrap.RunAsync();
         
         if (seedDevData)
         {

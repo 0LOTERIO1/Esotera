@@ -70,9 +70,6 @@ public class DevSeed
 
     private async Task SeedProductsAsync()
     {
-        if (await _context.Products.AnyAsync())
-            return;
-
         var now = DateTime.UtcNow;
 
         var products = new[]
@@ -232,9 +229,14 @@ public class DevSeed
             }
         };
 
-        _context.Products.AddRange(products);
+        var existingIds = await _context.Products.Select(p => p.Id).ToListAsync();
+        var toAdd = products.Where(p => !existingIds.Contains(p.Id)).ToArray();
+        if (toAdd.Length == 0)
+            return;
+
+        _context.Products.AddRange(toAdd);
         await _context.SaveChangesAsync();
-        _logger.LogInformation("Produtos criados.");
+        _logger.LogInformation("Produtos de desenvolvimento criados: {Count}.", toAdd.Length);
     }
 
     /// <summary>

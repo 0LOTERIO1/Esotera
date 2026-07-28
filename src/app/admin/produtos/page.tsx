@@ -488,7 +488,15 @@ export default function AdminProductsPage() {
         </div>
       ) : null}
       {!loading && !error && displayList.length === 0 ? (
-        <p className="mt-6 text-sm text-esotera-muted">Nenhum produto encontrado.</p>
+        <div className="mt-6 rounded-md border border-esotera-border bg-esotera-surface-secondary px-4 py-3 text-sm text-esotera-muted">
+          <p>Nenhum produto encontrado no catálogo da API.</p>
+          {apiMode ? (
+            <p className="mt-1">
+              Com o modo API, a lista vem do Neon (não do mock local). Use
+              &quot;Novo produto&quot; após as categorias estarem disponíveis.
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <ul className="mt-6 space-y-3">
@@ -616,29 +624,45 @@ export default function AdminProductsPage() {
               </FormField>
               <FormField label="Categoria" id="p-category" required error={formErrors.category}>
                 {apiMode ? (
-                  <select
-                    id="p-category"
-                    className={inputClassName}
-                    value={form.categoryId}
-                    onChange={(e) => {
-                      const cat = categories.find((c) => c.id === e.target.value);
-                      setForm({
-                        ...form,
-                        categoryId: e.target.value,
-                        category: cat?.name ?? "",
-                      });
-                    }}
-                  >
-                    <option value="">Selecione…</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
+                  <>
+                    <select
+                      id="p-category"
+                      name="categoryId"
+                      className={inputClassName}
+                      value={form.categoryId}
+                      onChange={(e) => {
+                        const cat = categories.find((c) => c.id === e.target.value);
+                        setForm({
+                          ...form,
+                          categoryId: e.target.value,
+                          category: cat?.name ?? "",
+                        });
+                      }}
+                      disabled={categories.length === 0}
+                    >
+                      <option value="">
+                        {categories.length === 0
+                          ? "Nenhuma categoria disponível…"
+                          : "Selecione…"}
                       </option>
-                    ))}
-                  </select>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {categories.length === 0 ? (
+                      <p className="mt-1 text-xs text-esotera-error" role="alert">
+                        Nenhuma categoria no banco. Após o deploy da API com
+                        bootstrap de catálogo, recarregue esta página. Sem
+                        categoria não é possível cadastrar produtos.
+                      </p>
+                    ) : null}
+                  </>
                 ) : (
                   <input
                     id="p-category"
+                    name="category"
                     className={inputClassName}
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}

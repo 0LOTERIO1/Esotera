@@ -3,43 +3,35 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/utils/storage";
-import { generateId } from "@/utils/format";
-import { mockCouponService } from "@/services/coupon/mockCouponService";
-import { mockPaymentService } from "@/services/payment/mockPaymentService";
-import type {
-  Address,
-  Order,
-  OrderItem,
-  OrderStatus,
-  PaymentMethod,
-  ShippingMethodId,
-  ShippingOption,
-} from "@/types";
+import { isApiMode } from "@/config/dataMode";
+import { MockOrderRepository } from "@/services/repositories/MockOrderRepository";
+import { getOrderRepository } from "@/services/repositories";
+import type { CreateOrderInput } from "@/services/repositories/IOrderRepository";
+import type { OrderListItem } from "@/services/api/ordersApi.types";
+import type { Order, OrderStatus } from "@/types";
 
-type CreateOrderInput = {
-  userId: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  customerCpf: string;
-  items: OrderItem[];
-  subtotal: number;
-  discount: number;
-  couponCode?: string;
-  shippingOption: ShippingOption;
-  address: Address;
-  paymentMethod: PaymentMethod;
-  installments?: number;
-};
+/**
+ * Pedidos do cliente:
+ * - mock: localStorage via MockOrderRepository
+ * - api: backend real (sem fallback mock)
+ *
+ * Painel admin permanece demonstrativo no localStorage (não mistura pedidos da API).
+ * TODO Fase admin: conectar painel administrativo à API de pedidos.
+ */
+const demoOrders = new MockOrderRepository();
 
 type OrdersState = {
+  /** Pedidos mock / demo admin — não é fonte de verdade em modo API */
   orders: Order[];
   hydrated: boolean;
   setHydrated: (value: boolean) => void;
-  createOrder: (input: CreateOrderInput) => Order;
+  createOrder: (input: CreateOrderInput) => Promise<Order>;
   getById: (id: string) => Order | undefined;
   getByUser: (userId: string) => Order[];
-  updateStatus: (id: string, status: OrderStatus) => void;
+  fetchById: (id: string) => Promise<Order | undefined>;
+  fetchMineSummaries: (userId: string) => Promise<OrderListItem[]>;
+  getAllOrders: () => Promise<Order[]>;
+  updateStatus: (id: string, status: OrderStatus) => Promise<void>;
 };
 
 export const useOrdersStore = create<OrdersState>()(
@@ -48,65 +40,49 @@ export const useOrdersStore = create<OrdersState>()(
       orders: [],
       hydrated: false,
       setHydrated: (value) => set({ hydrated: value }),
-      createOrder: (input) => {
-        const payment = mockPaymentService.process({
-          method: input.paymentMethod,
-          installments: input.installments,
-          total: input.subtotal - input.discount + input.shippingOption.price,
-        });
 
-        const now = new Date().toISOString();
-        const order: Order = {
-          id: generateId("ped"),
-          userId: input.userId,
-          items: input.items,
-          subtotal: input.subtotal,
-          discount: input.discount,
-          shippingPrice: input.shippingOption.price,
-          total:
-            input.subtotal - input.discount + input.shippingOption.price,
-          couponCode: input.couponCode,
-          shipping: {
-            methodId: input.shippingOption.id as ShippingMethodId,
-            methodName: `${input.shippingOption.provider} — ${input.shippingOption.name}`,
-            provider: input.shippingOption.provider,
-            estimatedDays: input.shippingOption.estimatedDays,
-            address: input.address,
-          },
-          payment: {
-            method: input.paymentMethod,
-            installments: input.installments,
-            status: payment.message,
-          },
-          status: mockPaymentService.initialStatus(input.paymentMethod),
-          createdAt: now,
-          updatedAt: now,
-          upSellerExport: {
-            customerName: input.customerName,
-            customerEmail: input.customerEmail,
-            customerPhone: input.customerPhone,
-            customerCpf: input.customerCpf,
-          },
-        };
-
-        if (input.couponCode) {
-          mockCouponService.markUsed(input.userId, input.couponCode);
+      createOrder: async (input) => {
+        if (isApiMode()) {
+          return getOrderRepository().create(input);
         }
-
-        set((state) => ({ orders: [order, ...state.orders] }));
+        demoOrders.setOrders(get().orders);
+        const order = await demoOrders.create(input);
+        set({ orders: demoOrders.getOrders() });
         return order;
       },
+
       getById: (id) => get().orders.find((o) => o.id === id),
-      getByUser: (userId) =>
-        get().orders.filter((o) => o.userId === userId),
-      updateStatus: (id, status) => {
-        set((state) => ({
-          orders: state.orders.map((o) =>
-            o.id === id
-              ? { ...o, status, updatedAt: new Date().toISOString() }
-              : o,
-          ),
-        }));
+
+      getByUser: (userId) => get().orders.filter((o) => o.userId === userId),
+
+      fetchById: async (id) => {
+        if (isApiMode()) {
+          return getOrderRepository().getById(id);
+        }
+        return get().orders.find((o) => o.id === id);
+      },
+
+      fetchMineSummaries: async (userId) => {
+        if (isApiMode()) {
+          return getOrderRepository().listMineSummaries(userId);
+        }
+        demoOrders.setOrders(get().orders);
+        return demoOrders.listMineSummaries(userId);
+      },
+
+      getAllOrders: async () => {
+        // Admin demo — sempre local, nunca API nesta fase
+        demoOrders.setOrders(get().orders);
+        const orders = await demoOrders.listAll();
+        set({ orders });
+        return orders;
+      },
+
+      updateStatus: async (id, status) => {
+        // Admin demo — sempre local
+        demoOrders.setOrders(get().orders);
+        await demoOrders.updateStatus(id, status);
+        set({ orders: demoOrders.getOrders() });
       },
     }),
     {

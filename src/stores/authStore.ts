@@ -3,19 +3,24 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/utils/storage";
-import { mockAuthService, type RegisterInput } from "@/services/auth/mockAuthService";
+import { getAuthRepository } from "@/services/repositories";
+import { sessionService } from "@/services/api/sessionService";
+import { isApiMode } from "@/config/dataMode";
+import type { RegisterInput } from "@/services/repositories/IAuthRepository";
 import type { User } from "@/types";
 
 type AuthState = {
   user: User | null;
   rememberMe: boolean;
   hydrated: boolean;
+  sessionReady: boolean;
   setHydrated: (value: boolean) => void;
-  login: (email: string, password: string, remember?: boolean) => User;
-  loginDemoCustomer: () => User;
-  loginDemoAdmin: () => User;
-  register: (input: RegisterInput) => User;
-  logout: () => void;
+  restoreSession: () => Promise<void>;
+  login: (email: string, password: string, remember?: boolean) => Promise<User>;
+  loginDemoCustomer: () => Promise<User>;
+  loginDemoAdmin: () => Promise<User>;
+  register: (input: RegisterInput) => Promise<User>;
+  logout: () => Promise<void>;
   updateProfile: (partial: Partial<User>) => void;
   isAdmin: () => boolean;
   isAuthenticated: () => boolean;
@@ -27,28 +32,63 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       rememberMe: false,
       hydrated: false,
+      sessionReady: false,
       setHydrated: (value) => set({ hydrated: value }),
-      login: (email, password, remember = false) => {
-        const user = mockAuthService.login(email, password);
+      restoreSession: async () => {
+        sessionService.onUnauthorized(() => {
+          set({ user: null });
+        });
+
+        if (!isApiMode()) {
+          set({ sessionReady: true });
+          return;
+        }
+
+        const token = sessionService.getToken();
+        if (!token) {
+          set({ user: null, sessionReady: true });
+          return;
+        }
+
+        const repo = getAuthRepository();
+        if (repo.restoreSession) {
+          const user = await repo.restoreSession();
+          set({ user, sessionReady: true });
+          return;
+        }
+
+        set({ sessionReady: true });
+      },
+      login: async (email, password, remember = false) => {
+        const repo = getAuthRepository();
+        const user = await repo.login(email, password);
         set({ user, rememberMe: remember });
         return user;
       },
-      loginDemoCustomer: () => {
-        const user = mockAuthService.loginAsDemoCustomer();
+      loginDemoCustomer: async () => {
+        const repo = getAuthRepository();
+        const user = await repo.loginDemoCustomer();
         set({ user, rememberMe: true });
         return user;
       },
-      loginDemoAdmin: () => {
-        const user = mockAuthService.loginAsDemoAdmin();
+      loginDemoAdmin: async () => {
+        const repo = getAuthRepository();
+        const user = await repo.loginDemoAdmin();
         set({ user, rememberMe: true });
         return user;
       },
-      register: (input) => {
-        const user = mockAuthService.register(input);
+      register: async (input) => {
+        const repo = getAuthRepository();
+        const user = await repo.register(input);
         set({ user, rememberMe: true });
         return user;
       },
-      logout: () => set({ user: null }),
+      logout: async () => {
+        const repo = getAuthRepository();
+        await repo.logout();
+        sessionService.clear();
+        set({ user: null });
+      },
       updateProfile: (partial) => {
         const current = get().user;
         if (!current) return;

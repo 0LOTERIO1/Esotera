@@ -34,11 +34,14 @@ export const mockCouponService = {
     userId?: string | null;
     discountAmount?: number;
     minPurchase?: number;
+    /** Quando informado, valida contra este código (admin mock); senão usa defaultCoupon */
+    expectedCode?: string;
   }): CouponValidationResult {
     const config = this.getConfig(params.discountAmount, params.minPurchase);
     const code = params.code.trim().toUpperCase();
+    const expected = (params.expectedCode ?? config.code).trim().toUpperCase();
 
-    if (code !== config.code) {
+    if (code !== expected) {
       return {
         ok: false,
         reason: "invalid",

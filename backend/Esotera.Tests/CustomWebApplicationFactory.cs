@@ -1,0 +1,67 @@
+using Esotera.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
+namespace Esotera.Tests;
+
+public class CustomWebApplicationFactory : WebApplicationFactory<Program>
+{
+    private readonly string _dbName = $"EsoteraTestDb_{Guid.NewGuid()}";
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment("Testing");
+
+        builder.ConfigureServices(services =>
+        {
+            var descriptorsToRemove = services
+                .Where(d => d.ServiceType == typeof(DbContextOptions<EsoteraDbContext>) ||
+                           d.ServiceType == typeof(EsoteraDbContext) ||
+                           (d.ServiceType.IsGenericType && 
+                            d.ServiceType.GetGenericTypeDefinition() == typeof(DbContextOptions<>)))
+                .ToList();
+
+            foreach (var descriptor in descriptorsToRemove)
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddDbContext<EsoteraDbContext>(options =>
+            {
+                options.UseInMemoryDatabase(_dbName);
+            });
+        });
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        builder.ConfigureLogging(logging =>
+        {
+            logging.ClearProviders();
+        });
+
+        var host = base.CreateHost(builder);
+
+        using var scope = host.Services.CreateScope();
+        var services = scope.ServiceProvider;
+        var db = services.GetRequiredService<EsoteraDbContext>();
+
+        db.Database.EnsureCreated();
+
+        try
+        {
+            var seeder = services.GetRequiredService<DevSeed>();
+            seeder.SeedAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"An error occurred seeding the database. Error: {ex.Message}");
+        }
+
+        return host;
+    }
+}

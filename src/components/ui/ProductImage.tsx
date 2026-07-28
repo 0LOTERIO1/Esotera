@@ -1,6 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
+import {
+  normalizeProductImageUrl,
+  PRODUCT_IMAGE_PLACEHOLDER,
+} from "@/utils/productImage";
 
 type ProductImageProps = {
   src: string;
@@ -14,8 +19,8 @@ type ProductImageProps = {
 };
 
 /**
- * Placeholders do protótipo são SVG locais.
- * Usa <img> nativo para SVG (next/image otimizado falha com frequência).
+ * Suporta PNG/SVG locais, /media/ da API e Data URL.
+ * Em falha de carregamento, usa placeholder local (sem ícone quebrado).
  */
 export function ProductImage({
   src,
@@ -27,18 +32,30 @@ export function ProductImage({
   sizes,
   priority,
 }: ProductImageProps) {
-  const isSvg = src.toLowerCase().endsWith(".svg");
+  const normalized = normalizeProductImageUrl(src);
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const broken = failedFor === normalized;
+  const resolved = broken ? PRODUCT_IMAGE_PLACEHOLDER : normalized;
+  const isSvg = resolved.toLowerCase().endsWith(".svg");
+  const isDataUrl = resolved.startsWith("data:");
 
-  if (isSvg) {
+  const handleError = () => {
+    if (normalized !== PRODUCT_IMAGE_PLACEHOLDER) {
+      setFailedFor(normalized);
+    }
+  };
+
+  if (isSvg || isDataUrl) {
     if (fill) {
       return (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={src}
+          src={resolved}
           alt={alt}
-          className={`absolute inset-0 h-full w-full ${className}`}
+          className={`absolute inset-0 h-full w-full object-cover ${className}`}
           loading={priority ? "eager" : "lazy"}
           decoding="async"
+          onError={handleError}
         />
       );
     }
@@ -46,13 +63,14 @@ export function ProductImage({
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={src}
+        src={resolved}
         alt={alt}
         width={width ?? 400}
         height={height ?? 500}
-        className={className}
+        className={`object-cover ${className}`}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
+        onError={handleError}
       />
     );
   }
@@ -60,25 +78,27 @@ export function ProductImage({
   if (fill) {
     return (
       <Image
-        src={src}
+        src={resolved}
         alt={alt}
         fill
-        className={className}
+        className={`object-cover ${className}`}
         sizes={sizes}
         priority={priority}
+        onError={handleError}
       />
     );
   }
 
   return (
     <Image
-      src={src}
+      src={resolved}
       alt={alt}
       width={width ?? 400}
       height={height ?? 500}
-      className={className}
+      className={`object-cover ${className}`}
       sizes={sizes}
       priority={priority}
+      onError={handleError}
     />
   );
 }

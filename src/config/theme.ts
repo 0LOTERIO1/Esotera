@@ -1,16 +1,17 @@
 /** Tokens visuais centralizados — espelhados em globals.css */
 export const theme = {
   colors: {
-    black: "#0a0a0b",
-    navy: "#0c1220",
-    graphite: "#2a2f3a",
-    gold: "#c4a35a",
-    goldSoft: "#d4bc7d",
-    white: "#faf9f7",
-    beige: "#e8e0d4",
-    purple: "#2d1f3d",
-    muted: "#9aa0ab",
-    success: "#3d7a5a",
-    error: "#a34a4a",
+    background: "#f7fbff",
+    surface: "#ffffff",
+    surfaceSecondary: "#eaf5ff",
+    primary: "#2878b8",
+    primaryHover: "#1f659e",
+    secondary: "#123b5d",
+    text: "#163247",
+    muted: "#647b8d",
+    border: "#cfe3f2",
+    accent: "#d2a84a",
+    success: "#2f7d57",
+    error: "#c04545",
   },
 } as const;

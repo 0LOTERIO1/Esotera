@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { brazilianStates } from "@/data/brazilianStates";
@@ -10,6 +10,8 @@ import { maskCep, maskCpf, maskPhone } from "@/utils/masks";
 import { validateCep, validateCpf, validateEmail } from "@/utils/validation";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
+import { useCepAutofill } from "@/hooks/useCepAutofill";
+import type { CepLookupResult } from "@/services/cep/viacepService";
 
 type FormState = {
   name: string;
@@ -55,10 +57,55 @@ export default function RegisterPage() {
   const push = useToastStore((s) => s.push);
   const [form, setForm] = useState<FormState>(initial);
   const [errors, setErrors] = useState<Errors>({});
+  const [cepTouched, setCepTouched] = useState(false);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
+
+  const applyCepResult = useCallback((result: CepLookupResult) => {
+    setForm((prev) => ({
+      ...prev,
+      street: result.street,
+      neighborhood: result.neighborhood,
+      city: result.city,
+      state: result.state || prev.state,
+    }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.cep;
+      delete next.street;
+      delete next.city;
+      delete next.state;
+      if (!result.neighborhood) {
+        next.neighborhood = "Informe o bairro.";
+      } else {
+        delete next.neighborhood;
+      }
+      return next;
+    });
+  }, []);
+
+  const clearCepAutofill = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      street: "",
+      neighborhood: "",
+      city: "",
+    }));
+  }, []);
+
+  const {
+    status: cepStatus,
+    message: cepMessage,
+    lookingUp,
+    assertCepReadyForSubmit,
+  } = useCepAutofill({
+    cep: form.cep,
+    enabled: cepTouched,
+    onResolved: applyCepResult,
+    onNotFound: clearCepAutofill,
+  });
 
   function validate(): boolean {
     const next: Errors = {};
@@ -72,6 +119,8 @@ export default function RegisterPage() {
     if (form.password !== form.confirmPassword)
       next.confirmPassword = "As senhas não coincidem.";
     if (!validateCep(form.cep)) next.cep = "CEP inválido.";
+    const cepBlock = assertCepReadyForSubmit();
+    if (cepBlock) next.cep = cepBlock;
     if (!form.street.trim()) next.street = "Informe o endereço.";
     if (!form.number.trim()) next.number = "Informe o número.";
     if (!form.neighborhood.trim()) next.neighborhood = "Informe o bairro.";
@@ -83,16 +132,17 @@ export default function RegisterPage() {
     return Object.keys(next).length === 0;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (lookingUp) return;
     if (!validate()) return;
     try {
-      register({
+      await register({
         name: form.name,
         email: form.email,
         cpf: form.cpf,
         phone: form.phone,
-        passwordProvided: true,
+        password: form.password,
         address: {
           cep: form.cep,
           street: form.street,
@@ -114,7 +164,7 @@ export default function RegisterPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
-      <h1 className="font-serif text-4xl text-esotera-white">Cadastro</h1>
+      <h1 className="font-serif text-4xl text-esotera-secondary">Cadastro</h1>
       <p className="mt-2 text-sm text-esotera-muted">
         Cadastro simulado. A senha não é armazenada em texto puro — apenas a
         sessão e dados não sensíveis.
@@ -181,15 +231,39 @@ export default function RegisterPage() {
             onChange={(e) => set("confirmPassword", e.target.value)}
           />
         </FormField>
-        <FormField label="CEP" id="cep" required error={errors.cep}>
+        <FormField
+          label="CEP"
+          id="cep"
+          required
+          error={
+            errors.cep ||
+            (cepStatus === "not_found" || cepStatus === "error"
+              ? (cepMessage ?? undefined)
+              : undefined)
+          }
+        >
           <input
             id="cep"
             className={inputClassName}
             value={form.cep}
-            onChange={(e) => set("cep", maskCep(e.target.value))}
+            onChange={(e) => {
+              setCepTouched(true);
+              set("cep", maskCep(e.target.value));
+            }}
             inputMode="numeric"
+            aria-busy={lookingUp}
           />
         </FormField>
+        {lookingUp ? (
+          <p className="sm:col-span-2 text-xs text-esotera-muted" role="status">
+            Consultando CEP…
+          </p>
+        ) : null}
+        {cepStatus === "ok" && cepMessage ? (
+          <p className="sm:col-span-2 text-xs text-esotera-muted" role="status">
+            {cepMessage}
+          </p>
+        ) : null}
         <FormField label="Endereço" id="street" required error={errors.street}>
           <input
             id="street"
@@ -286,15 +360,15 @@ export default function RegisterPage() {
         </div>
 
         <div className="sm:col-span-2">
-          <Button type="submit" className="w-full sm:w-auto">
-            Criar conta
+          <Button type="submit" className="w-full sm:w-auto" disabled={lookingUp}>
+            {lookingUp ? "Consultando CEP…" : "Criar conta"}
           </Button>
         </div>
       </form>
 
       <p className="mt-6 text-sm text-esotera-muted">
         Já tem conta?{" "}
-        <Link href="/login" className="text-esotera-gold hover:underline">
+        <Link href="/login" className="text-esotera-primary hover:underline">
           Entrar
         </Link>
       </p>

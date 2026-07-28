@@ -20,10 +20,10 @@ export function FormField({
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm text-esotera-beige">
+      <label htmlFor={id} className="block text-sm font-medium text-esotera-secondary">
         {label}
         {required ? (
-          <span className="text-esotera-gold" aria-hidden>
+          <span className="text-esotera-primary" aria-hidden>
             {" "}
             *
           </span>
@@ -45,4 +45,4 @@ export function FormField({
 }
 
 export const inputClassName =
-  "w-full rounded-md border border-esotera-graphite bg-esotera-black/50 px-3 py-2.5 text-sm text-esotera-white placeholder:text-esotera-muted/70 transition focus:border-esotera-gold";
+  "w-full rounded-md border border-esotera-border bg-esotera-surface px-3 py-2.5 text-sm text-esotera-text placeholder:text-esotera-muted/80 transition focus:border-esotera-primary";

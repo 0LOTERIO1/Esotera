@@ -31,13 +31,13 @@ export function PaymentOptions({
     <div className="space-y-4">
       <div
         role="status"
-        className="rounded-md border border-esotera-gold/40 bg-esotera-gold/10 px-4 py-3 text-sm text-esotera-gold-soft"
+        className="rounded-md border border-esotera-primary/40 bg-esotera-primary/10 px-4 py-3 text-sm text-esotera-primary"
       >
         {storeConfig.demoNotice}
       </div>
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium text-esotera-beige">
+        <legend className="text-sm font-medium text-esotera-text">
           Forma de pagamento
         </legend>
         {(
@@ -51,8 +51,8 @@ export function PaymentOptions({
             key={value}
             className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 ${
               method === value
-                ? "border-esotera-gold bg-esotera-gold/5"
-                : "border-esotera-graphite"
+                ? "border-esotera-primary bg-esotera-primary/5"
+                : "border-esotera-border"
             }`}
           >
             <input
@@ -62,16 +62,16 @@ export function PaymentOptions({
               checked={method === value}
               onChange={() => onMethodChange(value)}
             />
-            <span className="text-sm text-esotera-beige">{label}</span>
+            <span className="text-sm text-esotera-text">{label}</span>
           </label>
         ))}
       </fieldset>
 
       {method === "pix" ? (
-        <div className="rounded-md border border-esotera-graphite p-4 text-sm text-esotera-muted">
+        <div className="rounded-md border border-esotera-border p-4 text-sm text-esotera-muted">
           <p>QR Code fictício — simulação apenas.</p>
           <div
-            className="mx-auto mt-4 flex h-40 w-40 items-center justify-center border border-dashed border-esotera-gold/40 bg-esotera-black/40 text-center text-xs text-esotera-gold"
+            className="mx-auto mt-4 flex h-40 w-40 items-center justify-center border border-dashed border-esotera-primary/40 bg-esotera-surface text-center text-xs text-esotera-primary"
             aria-hidden
           >
             QR Code
@@ -145,7 +145,7 @@ export function PaymentOptions({
       ) : null}
 
       {method === "boleto" ? (
-        <div className="rounded-md border border-esotera-graphite p-4 text-sm text-esotera-muted">
+        <div className="rounded-md border border-esotera-border p-4 text-sm text-esotera-muted">
           Será gerado um boleto fictício sem validade real ao finalizar o
           pedido.
         </div>

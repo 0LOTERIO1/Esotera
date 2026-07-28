@@ -4,9 +4,10 @@ export const storeConfig = {
   tagline: "Autoconhecimento e espiritualidade através do tarô",
   description:
     "Loja especializada em tarôs e produtos esotéricos selecionados com cuidado.",
-  email: "contato@esotera.demo",
-  phone: "(11) 4000-0000",
-  whatsapp: "(11) 99000-0000",
+  /** Contatos oficiais ainda não fornecidos — não exibir como dados reais na UI pública */
+  email: null as string | null,
+  phone: null as string | null,
+  whatsapp: null as string | null,
   address: {
     street: "Ermelino Matarazzo",
     city: "São Paulo",
@@ -14,9 +15,9 @@ export const storeConfig = {
     cep: "08061-420",
   },
   social: {
-    instagram: "https://instagram.com/esotera.demo",
-    facebook: "https://facebook.com/esotera.demo",
-    youtube: "https://youtube.com/@esotera.demo",
+    instagram: null as string | null,
+    facebook: null as string | null,
+    youtube: null as string | null,
   },
   demoNotice:
     "Ambiente de demonstração — nenhuma cobrança será realizada.",

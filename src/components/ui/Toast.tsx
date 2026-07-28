@@ -19,12 +19,12 @@ export function ToastViewport() {
         <div
           key={toast.id}
           role="status"
-          className={`flex items-start gap-3 rounded-md border px-4 py-3 text-sm shadow-lg backdrop-blur ${
+          className={`flex items-start gap-3 rounded-md border px-4 py-3 text-sm shadow-md ${
             toast.type === "success"
-              ? "border-esotera-success/40 bg-esotera-navy/95 text-esotera-beige"
+              ? "border-esotera-success/35 bg-esotera-surface text-esotera-text"
               : toast.type === "error"
-                ? "border-esotera-error/50 bg-esotera-navy/95 text-esotera-beige"
-                : "border-esotera-gold/30 bg-esotera-navy/95 text-esotera-beige"
+                ? "border-esotera-error/40 bg-esotera-surface text-esotera-text"
+                : "border-esotera-border bg-esotera-surface text-esotera-text"
           }`}
         >
           <p className="flex-1">{toast.message}</p>
@@ -32,7 +32,7 @@ export function ToastViewport() {
             type="button"
             onClick={() => dismiss(toast.id)}
             aria-label="Fechar notificação"
-            className="text-esotera-muted hover:text-esotera-white"
+            className="text-esotera-muted hover:text-esotera-secondary"
           >
             <X size={16} />
           </button>

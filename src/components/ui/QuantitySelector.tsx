@@ -20,13 +20,13 @@ export function QuantitySelector({
   id,
 }: QuantitySelectorProps) {
   return (
-    <div className="inline-flex items-center rounded-md border border-esotera-graphite bg-esotera-black/40">
+    <div className="inline-flex items-center rounded-md border border-esotera-border bg-esotera-surface">
       <button
         type="button"
         aria-label="Diminuir quantidade"
         disabled={disabled || value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
-        className="flex h-11 w-11 items-center justify-center text-esotera-beige disabled:opacity-40"
+        className="flex h-11 w-11 items-center justify-center text-esotera-secondary disabled:opacity-40"
       >
         <Minus size={16} />
       </button>
@@ -44,14 +44,14 @@ export function QuantitySelector({
           if (Number.isNaN(next)) return;
           onChange(Math.min(max, Math.max(min, next)));
         }}
-        className="h-11 w-12 border-x border-esotera-graphite bg-transparent text-center text-sm text-esotera-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className="h-11 w-12 border-x border-esotera-border bg-transparent text-center text-sm text-esotera-text [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
       <button
         type="button"
         aria-label="Aumentar quantidade"
         disabled={disabled || value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
-        className="flex h-11 w-11 items-center justify-center text-esotera-beige disabled:opacity-40"
+        className="flex h-11 w-11 items-center justify-center text-esotera-secondary disabled:opacity-40"
       >
         <Plus size={16} />
       </button>

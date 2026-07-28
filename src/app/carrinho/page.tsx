@@ -23,7 +23,7 @@ export default function CartPage() {
   if (!lines.length) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-        <h1 className="font-serif text-4xl text-esotera-white">Carrinho</h1>
+        <h1 className="font-serif text-4xl text-esotera-secondary">Carrinho</h1>
         <div className="mt-8">
           <EmptyState
             title="Seu carrinho está vazio"
@@ -38,7 +38,7 @@ export default function CartPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="font-serif text-4xl text-esotera-white">Carrinho</h1>
+        <h1 className="font-serif text-4xl text-esotera-secondary">Carrinho</h1>
         <Button type="button" variant="danger" onClick={() => setConfirmClear(true)}>
           Esvaziar carrinho
         </Button>
@@ -49,7 +49,7 @@ export default function CartPage() {
           {lines.map((line) => (
             <article
               key={`${line.productId}-${line.variation ?? ""}`}
-              className="flex flex-col gap-4 rounded-lg border border-esotera-graphite p-4 sm:flex-row"
+              className="flex flex-col gap-4 rounded-lg border border-esotera-border p-4 sm:flex-row"
             >
               <Link
                 href={`/produtos/${line.product.slug}`}
@@ -68,7 +68,7 @@ export default function CartPage() {
                   <div>
                     <Link
                       href={`/produtos/${line.product.slug}`}
-                      className="font-serif text-lg text-esotera-beige hover:text-esotera-gold"
+                      className="font-serif text-lg text-esotera-text hover:text-esotera-primary"
                     >
                       {line.product.name}
                     </Link>

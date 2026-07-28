@@ -4,7 +4,7 @@ import { ButtonLink } from "@/components/ui/Button";
 export default function ProductNotFound() {
   return (
     <div className="mx-auto max-w-lg px-4 py-20 text-center">
-      <h1 className="font-serif text-3xl text-esotera-white">
+      <h1 className="font-serif text-3xl text-esotera-secondary">
         Produto não encontrado
       </h1>
       <p className="mt-3 text-sm text-esotera-muted">
@@ -14,7 +14,7 @@ export default function ProductNotFound() {
         <ButtonLink href="/produtos">Voltar ao catálogo</ButtonLink>
       </div>
       <p className="mt-4 text-sm">
-        <Link href="/" className="text-esotera-gold hover:underline">
+        <Link href="/" className="text-esotera-primary hover:underline">
           Ir para o início
         </Link>
       </p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { ProductImage } from "@/components/ui/ProductImage";
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { notFound } from "next/navigation";
 import { useProductsStore } from "@/stores/productsStore";
 import { useCartStore } from "@/stores/cartStore";
@@ -10,8 +10,13 @@ import { Price } from "@/components/ui/Price";
 import { QuantitySelector } from "@/components/ui/QuantitySelector";
 import { Button } from "@/components/ui/Button";
 import { ProductCard } from "@/components/products/ProductCard";
+import { ProductGrid } from "@/components/products/ProductGrid";
 import { shippingOrigin } from "@/config/shipping";
 import { FormField, inputClassName } from "@/components/ui/FormField";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useStoreHydration } from "@/hooks/useStoreHydration";
+import type { Product } from "@/types";
 
 export default function ProductDetailPage({
   params,
@@ -19,30 +24,90 @@ export default function ProductDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
-  const product = useProductsStore((s) => s.getBySlug(slug));
+  const hydrated = useStoreHydration();
   const products = useProductsStore((s) => s.products);
+  const fetchBySlug = useProductsStore((s) => s.fetchBySlug);
   const addItem = useCartStore((s) => s.addItem);
   const push = useToastStore((s) => s.push);
+
+  const [product, setProduct] = useState<Product | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [variation, setVariation] = useState("");
   const [activeImage, setActiveImage] = useState(0);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    let cancelled = false;
+
+    void (async () => {
+      setLoadError(null);
+      try {
+        const full = await fetchBySlug(slug);
+        if (cancelled) return;
+        setProduct(full);
+      } catch (error) {
+        if (cancelled) return;
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível carregar o produto.",
+        );
+        const fallback = useProductsStore.getState().getBySlug(slug);
+        setProduct(fallback ?? null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, slug, fetchBySlug]);
 
   const related = useMemo(() => {
     if (!product) return [];
     return products
       .filter((p) => p.category === product.category && p.id !== product.id)
-      .slice(0, 3);
+      .slice(0, 10);
   }, [product, products]);
+
+  if (!hydrated || product === undefined) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <LoadingState label="Carregando produto…" />
+      </div>
+    );
+  }
+
+  if (loadError && !product) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <EmptyState
+          title="Produto indisponível"
+          description={loadError}
+          action={
+            <Button type="button" onClick={() => window.location.reload()}>
+              Tentar novamente
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   if (!product) {
     notFound();
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div className="grid gap-10 lg:grid-cols-2">
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      {loadError ? (
+        <p role="status" className="mb-4 text-sm text-esotera-muted">
+          {loadError}
+        </p>
+      ) : null}
+      <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
         <div>
-          <div className="relative aspect-[4/5] overflow-hidden rounded-lg border border-esotera-graphite bg-esotera-black/40">
+          <div className="relative aspect-square overflow-hidden rounded-lg border border-esotera-border bg-esotera-surface-secondary">
             <ProductImage
               src={product.images[activeImage] ?? product.images[0]}
               alt={product.name}
@@ -53,20 +118,26 @@ export default function ProductDetailPage({
             />
           </div>
           {product.images.length > 1 ? (
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex gap-2 overflow-x-auto">
               {product.images.map((src, index) => (
                 <button
-                  key={src}
+                  key={`${src}-${index}`}
                   type="button"
                   onClick={() => setActiveImage(index)}
-                  className={`relative h-20 w-16 overflow-hidden rounded border ${
+                  className={`relative h-16 w-16 shrink-0 overflow-hidden rounded border ${
                     activeImage === index
-                      ? "border-esotera-gold"
-                      : "border-esotera-graphite"
+                      ? "border-esotera-primary"
+                      : "border-esotera-border"
                   }`}
                   aria-label={`Ver imagem ${index + 1}`}
                 >
-                  <ProductImage src={src} alt="" fill className="object-cover" sizes="64px" />
+                  <ProductImage
+                    src={src}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="64px"
+                  />
                 </button>
               ))}
             </div>
@@ -77,7 +148,7 @@ export default function ProductDetailPage({
           <p className="text-xs uppercase tracking-wide text-esotera-muted">
             {product.category}
           </p>
-          <h1 className="mt-2 font-serif text-3xl text-esotera-white sm:text-4xl">
+          <h1 className="mt-2 font-serif text-3xl text-esotera-secondary sm:text-4xl">
             {product.name}
           </h1>
           <p className="mt-4">
@@ -94,7 +165,7 @@ export default function ProductDetailPage({
 
           {product.features.length ? (
             <div className="mt-6">
-              <h2 className="font-serif text-xl text-esotera-beige">
+              <h2 className="font-serif text-xl text-esotera-secondary">
                 Características
               </h2>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-esotera-muted">
@@ -107,7 +178,7 @@ export default function ProductDetailPage({
 
           {product.packageContents?.length ? (
             <div className="mt-6">
-              <h2 className="font-serif text-xl text-esotera-beige">
+              <h2 className="font-serif text-xl text-esotera-secondary">
                 Conteúdo da embalagem
               </h2>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-esotera-muted">
@@ -157,8 +228,10 @@ export default function ProductDetailPage({
             </Button>
           </div>
 
-          <div className="mt-8 rounded-md border border-esotera-graphite p-4 text-sm text-esotera-muted">
-            <p className="font-medium text-esotera-beige">Informações de entrega</p>
+          <div className="mt-8 rounded-md border border-esotera-border bg-esotera-surface p-4 text-sm text-esotera-muted">
+            <p className="font-medium text-esotera-secondary">
+              Informações de entrega
+            </p>
             <p className="mt-2">
               Envio a partir de {shippingOrigin.city} ({shippingOrigin.cep}).
               Frete calculado no checkout. Modalidade J3 simulada para CEPs
@@ -169,14 +242,16 @@ export default function ProductDetailPage({
       </div>
 
       {related.length ? (
-        <section className="mt-16">
-          <h2 className="font-serif text-2xl text-esotera-white">
+        <section className="mt-12 sm:mt-16">
+          <h2 className="font-serif text-2xl text-esotera-secondary">
             Produtos relacionados
           </h2>
-          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {related.map((p) => (
-              <ProductCard key={p.id} product={p} />
-            ))}
+          <div className="mt-5">
+            <ProductGrid>
+              {related.map((p) => (
+                <ProductCard key={p.id} product={p} />
+              ))}
+            </ProductGrid>
           </div>
         </section>
       ) : null}

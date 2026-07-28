@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { DEMO_PASSWORD_HINT } from "@/config/demoUsers";
+import { isApiMode } from "@/config/dataMode";
 
 function LoginForm() {
   const router = useRouter();
@@ -22,6 +23,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   function redirectAfterLogin(role: string) {
     if (returnUrl) {
@@ -31,23 +33,28 @@ function LoginForm() {
     router.push(role === "admin" ? "/admin" : "/minha-conta");
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSubmitting(true);
     try {
-      const user = login(email, password, remember);
+      const user = await login(email, password, remember);
       push("success", `Olá, ${user.name.split(" ")[0]}!`);
       redirectAfterLogin(user.role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha no login.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
     <div className="mx-auto max-w-md px-4 py-12 sm:px-6">
-      <h1 className="font-serif text-4xl text-esotera-white">Entrar</h1>
+      <h1 className="font-serif text-4xl text-esotera-secondary">Entrar</h1>
       <p className="mt-2 text-sm text-esotera-muted">
-        Login simulado para o protótipo. Senha demo: {DEMO_PASSWORD_HINT}
+        {isApiMode()
+          ? "Autenticação via API. Contas demo: cliente@esotera.demo / admin@esotera.demo"
+          : `Login simulado do protótipo. Senha demo: ${DEMO_PASSWORD_HINT}`}
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -81,8 +88,8 @@ function LoginForm() {
           />
           Lembrar de mim
         </label>
-        <Button type="submit" className="w-full">
-          Entrar
+        <Button type="submit" className="w-full" disabled={submitting}>
+          {submitting ? "Entrando…" : "Entrar"}
         </Button>
       </form>
 
@@ -97,10 +104,19 @@ function LoginForm() {
           type="button"
           variant="secondary"
           className="w-full"
-          onClick={() => {
-            const user = loginDemoCustomer();
-            push("success", "Entrou como cliente de demonstração.");
-            redirectAfterLogin(user.role);
+          disabled={submitting}
+          onClick={async () => {
+            setError(null);
+            setSubmitting(true);
+            try {
+              const user = await loginDemoCustomer();
+              push("success", "Entrou como cliente de demonstração.");
+              redirectAfterLogin(user.role);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Falha no login demo.");
+            } finally {
+              setSubmitting(false);
+            }
           }}
         >
           Entrar como usuário de demonstração
@@ -109,10 +125,19 @@ function LoginForm() {
           type="button"
           variant="secondary"
           className="w-full"
-          onClick={() => {
-            loginDemoAdmin();
-            push("success", "Entrou como administrador de demonstração.");
-            router.push("/admin");
+          disabled={submitting}
+          onClick={async () => {
+            setError(null);
+            setSubmitting(true);
+            try {
+              await loginDemoAdmin();
+              push("success", "Entrou como administrador de demonstração.");
+              router.push("/admin");
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Falha no login demo.");
+            } finally {
+              setSubmitting(false);
+            }
           }}
         >
           Entrar como administrador de demonstração
@@ -121,7 +146,7 @@ function LoginForm() {
 
       <p className="mt-6 text-center text-sm text-esotera-muted">
         Não tem conta?{" "}
-        <Link href="/cadastro" className="text-esotera-gold hover:underline">
+        <Link href="/cadastro" className="text-esotera-primary hover:underline">
           Cadastre-se
         </Link>
       </p>

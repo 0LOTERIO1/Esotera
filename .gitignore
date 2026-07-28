@@ -30,12 +30,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# env files (valores reais nunca versionados; exemplos permitidos)
 .env
-.env.local
-.env.*.local
-.env*
+.env.*
 !.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
 # vercel
 .vercel
@@ -43,3 +44,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Backend .NET
+backend/storage/**
+!backend/storage/products/.gitkeep
+**/appsettings.*.local.json
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates

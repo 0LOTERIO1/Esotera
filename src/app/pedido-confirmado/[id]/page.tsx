@@ -1,15 +1,20 @@
 "use client";
 
 import { ProductImage } from "@/components/ui/ProductImage";
-import { use } from "react";
+import { use, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/stores/authStore";
 import { useOrdersStore } from "@/stores/ordersStore";
-import { ButtonLink } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Price } from "@/components/ui/Price";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { paymentMethodLabels } from "@/utils/labels";
 import { formatDate } from "@/utils/format";
 import { storeConfig } from "@/config/store";
+import { ApiError } from "@/services/api/apiClient";
+import { isApiMode } from "@/config/dataMode";
+import type { Order } from "@/types";
 
 export default function OrderConfirmedPage({
   params,
@@ -17,7 +22,87 @@ export default function OrderConfirmedPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const order = useOrdersStore((s) => s.getById(id));
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const sessionReady = useAuthStore((s) => s.sessionReady);
+  const logout = useAuthStore((s) => s.logout);
+  const authReady = hydrated && sessionReady;
+  const getByIdLocal = useOrdersStore((s) => s.getById);
+  const fetchById = useOrdersStore((s) => s.fetchById);
+
+  const [order, setOrder] = useState<Order | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (isApiMode()) {
+        if (!user) {
+          setOrder(null);
+          return;
+        }
+        const result = await fetchById(id);
+        setOrder(result ?? null);
+      } else {
+        setOrder(getByIdLocal(id) ?? null);
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        await logout();
+        router.replace(`/login?returnUrl=/pedido-confirmado/${id}`);
+        return;
+      }
+      setError(
+        err instanceof ApiError
+          ? err.userMessage
+          : err instanceof Error
+            ? err.message
+            : "Não foi possível carregar o pedido.",
+      );
+      setOrder(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchById, getByIdLocal, id, logout, router, user]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (isApiMode() && !user) {
+      router.replace(`/login?returnUrl=/pedido-confirmado/${id}`);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [authReady, user, router, id, load]);
+
+  if (!authReady || loading || order === undefined) {
+    return (
+      <div className="px-4 py-16 text-center text-esotera-muted">
+        Carregando pedido…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <EmptyState
+          title="Não foi possível carregar o pedido"
+          description={error}
+          action={
+            <Button type="button" onClick={() => void load()}>
+              Tentar novamente
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   if (!order) {
     return (
@@ -32,29 +117,42 @@ export default function OrderConfirmedPage({
   }
 
   const address = order.shipping.address;
+  const displayNumber = order.orderNumber ?? order.id;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <p className="text-sm text-esotera-gold-soft">{storeConfig.demoNotice}</p>
-      <h1 className="mt-2 font-serif text-4xl text-esotera-white">
+      <p className="text-sm text-esotera-primary">{storeConfig.demoNotice}</p>
+      <h1 className="mt-2 font-serif text-4xl text-esotera-secondary">
         Pedido confirmado
       </h1>
       <p className="mt-2 text-sm text-esotera-muted">
-        Número: <span className="text-esotera-beige">{order.id}</span>
+        Número: <span className="text-esotera-text">{displayNumber}</span>
       </p>
       <p className="mt-1 text-sm text-esotera-muted">
         {formatDate(order.createdAt)} · <StatusBadge status={order.status} />
       </p>
+      <p className="mt-2 text-xs text-esotera-muted">
+        Pagamento simulado — nenhuma cobrança real foi realizada.
+      </p>
 
-      <section className="mt-8 space-y-4 rounded-lg border border-esotera-graphite p-5">
-        <h2 className="font-serif text-xl text-esotera-beige">Produtos</h2>
+      <section className="mt-8 space-y-4 rounded-lg border border-esotera-border p-5">
+        <h2 className="font-serif text-xl text-esotera-text">Produtos</h2>
         {order.items.map((item) => (
-          <div key={`${item.productId}-${item.variation ?? ""}`} className="flex gap-3">
+          <div
+            key={`${item.productId}-${item.variation ?? ""}`}
+            className="flex gap-3"
+          >
             <div className="relative h-16 w-12 overflow-hidden rounded">
-              <ProductImage src={item.image} alt={item.name} fill className="object-cover" sizes="48px" />
+              <ProductImage
+                src={item.image}
+                alt={item.name}
+                fill
+                className="object-cover"
+                sizes="48px"
+              />
             </div>
             <div className="text-sm">
-              <p className="text-esotera-beige">{item.name}</p>
+              <p className="text-esotera-text">{item.name}</p>
               <p className="text-esotera-muted">
                 {item.quantity} × <Price value={item.price} />
               </p>
@@ -64,16 +162,16 @@ export default function OrderConfirmedPage({
       </section>
 
       <section className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-esotera-graphite p-5 text-sm text-esotera-muted">
-          <h2 className="font-serif text-lg text-esotera-beige">Pagamento</h2>
+        <div className="rounded-lg border border-esotera-border p-5 text-sm text-esotera-muted">
+          <h2 className="font-serif text-lg text-esotera-text">Pagamento</h2>
           <p className="mt-2">{paymentMethodLabels[order.payment.method]}</p>
           {order.payment.installments ? (
             <p>{order.payment.installments}x sem juros (simulado)</p>
           ) : null}
           <p className="mt-1 text-xs">{order.payment.status}</p>
         </div>
-        <div className="rounded-lg border border-esotera-graphite p-5 text-sm text-esotera-muted">
-          <h2 className="font-serif text-lg text-esotera-beige">Entrega</h2>
+        <div className="rounded-lg border border-esotera-border p-5 text-sm text-esotera-muted">
+          <h2 className="font-serif text-lg text-esotera-text">Entrega</h2>
           <p className="mt-2">{order.shipping.methodName}</p>
           <p>{order.shipping.estimatedDays}</p>
           <p className="mt-2">
@@ -87,7 +185,7 @@ export default function OrderConfirmedPage({
         </div>
       </section>
 
-      <dl className="mt-4 space-y-2 rounded-lg border border-esotera-graphite p-5 text-sm">
+      <dl className="mt-4 space-y-2 rounded-lg border border-esotera-border p-5 text-sm">
         <div className="flex justify-between">
           <dt className="text-esotera-muted">Subtotal</dt>
           <dd>
@@ -110,8 +208,8 @@ export default function OrderConfirmedPage({
             )}
           </dd>
         </div>
-        <div className="flex justify-between border-t border-esotera-graphite pt-2 text-base">
-          <dt className="text-esotera-beige">Total</dt>
+        <div className="flex justify-between border-t border-esotera-border pt-2 text-base">
+          <dt className="text-esotera-text">Total</dt>
           <dd>
             <Price value={order.total} className="text-lg" />
           </dd>

@@ -8,17 +8,22 @@ export function NewsletterSection() {
   const push = useToastStore((s) => s.push);
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-      <div className="rounded-lg border border-esotera-graphite bg-esotera-black/30 px-6 py-10 sm:px-10">
-        <h2 className="font-serif text-3xl text-esotera-white">Newsletter</h2>
+    <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+      <div className="rounded-xl border border-esotera-border bg-esotera-surface px-5 py-8 shadow-sm sm:px-8">
+        <h2 className="font-serif text-2xl text-esotera-secondary sm:text-3xl">
+          Newsletter
+        </h2>
         <p className="mt-2 max-w-xl text-sm text-esotera-muted">
           Cadastro visual apenas — nenhum e-mail será enviado neste protótipo.
         </p>
         <form
-          className="mt-6 flex max-w-lg flex-col gap-3 sm:flex-row sm:items-end"
+          className="mt-5 flex max-w-lg flex-col gap-3 sm:flex-row sm:items-end"
           onSubmit={(e) => {
             e.preventDefault();
-            push("info", "Inscrição visual registrada. Sem envio real de e-mails.");
+            push(
+              "info",
+              "Inscrição visual registrada. Sem envio real de e-mails.",
+            );
             (e.target as HTMLFormElement).reset();
           }}
         >

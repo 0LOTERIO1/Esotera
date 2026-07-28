@@ -2,16 +2,17 @@
 
 import { useStoreHydration } from "@/hooks/useStoreHydration";
 import { ToastViewport } from "@/components/ui/Toast";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const ready = useStoreHydration();
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-esotera-navy text-esotera-beige">
+      <div className="flex min-h-screen items-center justify-center bg-esotera-background text-esotera-text">
         <div className="text-center">
-          <p className="font-serif text-2xl text-esotera-gold">Esotera</p>
-          <p className="mt-2 text-sm text-esotera-muted">Carregando…</p>
+          <BrandLogo variant="dark" href={null} className="mx-auto" />
+          <p className="mt-3 text-sm text-esotera-muted">Carregando…</p>
         </div>
       </div>
     );

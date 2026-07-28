@@ -1,3 +1,13 @@
+export type ProductImageMeta = {
+  id: string;
+  secureUrl: string;
+  publicId?: string | null;
+  altText?: string | null;
+  sortOrder: number;
+  isPrimary: boolean;
+  createdAt?: string;
+};
+
 export type Product = {
   id: string;
   slug: string;
@@ -6,15 +16,23 @@ export type Product = {
   description: string;
   price: number;
   category: string;
+  categoryId?: string;
   images: string[];
+  productImages?: ProductImageMeta[];
   features: string[];
   packageContents?: string[];
   variations?: string[];
   isFeatured: boolean;
   isAvailable: boolean;
+  isArchived?: boolean;
+  archivedAt?: string | null;
   isDemo?: boolean;
+  rowVersion?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
+/** Endereço embutido (perfil/checkout/pedido) — sem id */
 export type Address = {
   cep: string;
   street: string;
@@ -23,6 +41,17 @@ export type Address = {
   neighborhood: string;
   city: string;
   state: string;
+};
+
+/** Endereço persistido na API / lista da conta */
+export type SavedAddress = Address & {
+  id: string;
+  isPrimary: boolean;
+};
+
+/** Payload de criação/edição (sem id; isPrimary opcional) */
+export type AddressInput = Address & {
+  isPrimary?: boolean;
 };
 
 export type UserRole = "customer" | "admin";
@@ -83,6 +112,8 @@ export type OrderItem = {
 
 export type Order = {
   id: string;
+  /** Número amigável (API); no mock pode coincidir com id */
+  orderNumber?: string;
   userId: string;
   items: OrderItem[];
   subtotal: number;

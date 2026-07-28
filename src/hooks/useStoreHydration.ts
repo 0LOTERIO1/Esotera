@@ -10,18 +10,17 @@ import { useSettingsStore } from "@/stores/settingsStore";
 function markHydrated() {
   if (useCartStore.persist.hasHydrated()) useCartStore.getState().setHydrated(true);
   if (useAuthStore.persist.hasHydrated()) useAuthStore.getState().setHydrated(true);
-  if (useProductsStore.persist.hasHydrated())
-    useProductsStore.getState().setHydrated(true);
   if (useOrdersStore.persist.hasHydrated())
     useOrdersStore.getState().setHydrated(true);
   if (useSettingsStore.persist.hasHydrated())
     useSettingsStore.getState().setHydrated(true);
 }
 
-/** Evita mismatch de hidratação com localStorage */
+/** Evita mismatch de hidratação com localStorage e restaura sessão JWT */
 export function useStoreHydration() {
   const cart = useCartStore((s) => s.hydrated);
   const auth = useAuthStore((s) => s.hydrated);
+  const sessionReady = useAuthStore((s) => s.sessionReady);
   const products = useProductsStore((s) => s.hydrated);
   const orders = useOrdersStore((s) => s.hydrated);
   const settings = useSettingsStore((s) => s.hydrated);
@@ -34,9 +33,6 @@ export function useStoreHydration() {
       useAuthStore.persist.onFinishHydration(() =>
         useAuthStore.getState().setHydrated(true),
       ),
-      useProductsStore.persist.onFinishHydration(() =>
-        useProductsStore.getState().setHydrated(true),
-      ),
       useOrdersStore.persist.onFinishHydration(() =>
         useOrdersStore.getState().setHydrated(true),
       ),
@@ -47,8 +43,18 @@ export function useStoreHydration() {
 
     markHydrated();
 
+    void (async () => {
+      await useAuthStore.getState().restoreSession();
+      await useProductsStore.getState().refresh();
+      try {
+        await useSettingsStore.getState().refreshPublic();
+      } catch {
+        // Mantém defaults se a API pública estiver indisponível
+      }
+    })();
+
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  return cart && auth && products && orders && settings;
+  return cart && auth && sessionReady && products && orders && settings;
 }

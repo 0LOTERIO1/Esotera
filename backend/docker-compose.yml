@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: esotera-postgres
+    restart: unless-stopped
+    ports:
+    - "5433:5432"
+    environment:
+      POSTGRES_DB: esotera
+      POSTGRES_USER: esotera
+      POSTGRES_PASSWORD: esotera_dev_only
+    volumes:
+      - esotera_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U esotera -d esotera"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  esotera_postgres_data:

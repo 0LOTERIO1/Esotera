@@ -189,27 +189,45 @@ J3_API_TOKEN=
 
 ## Deploy
 
-### Frontend na Vercel
-
-O frontend pode ser publicado na **Vercel** no modo mock (sem backend):
+### Frontend na Vercel (modo API)
 
 ```bash
 npx vercel --prod
 ```
 
-**Importante:** Não configure `NEXT_PUBLIC_DATA_MODE` ou `NEXT_PUBLIC_API_URL` nas variáveis de ambiente da Vercel. O padrão é modo mock, que funciona perfeitamente sem backend.
+Variáveis na Vercel (Production/Preview):
 
-URL pública: após o deploy, a Vercel gera um endereço `*.vercel.app`. Quando houver domínio próprio, basta apontá-lo no painel da Vercel.
+- `NEXT_PUBLIC_DATA_MODE=api`
+- `NEXT_PUBLIC_API_URL=https://esotera-api.onrender.com`
 
-### Backend (opcional)
+URL pública: [https://esotera.vercel.app](https://esotera.vercel.app)
 
-O backend ASP.NET Core pode ser hospedado em:
-- Azure App Service
-- AWS Elastic Beanstalk
-- Google Cloud Run
-- Servidor VPS com Docker
+### Backend no Render
 
-Veja `backend/README.md` para instruções de deploy.
+API pública: [https://esotera-api.onrender.com](https://esotera-api.onrender.com)
+
+#### Bootstrap do primeiro administrador
+
+Com a tabela `Users` vazia, crie o Admin real via variáveis de ambiente no Render (sem senha no código):
+
+| Variável | Exemplo |
+|----------|---------|
+| `BOOTSTRAP_ADMIN_ENABLED` | `true` |
+| `BOOTSTRAP_ADMIN_NAME` | Nome do admin |
+| `BOOTSTRAP_ADMIN_EMAIL` | e-mail real |
+| `BOOTSTRAP_ADMIN_PASSWORD` | senha forte (≥ 6) |
+
+No próximo start da API, o bootstrap cria o usuário com `Role = Admin` e senha hasheada (BCrypt), se o e-mail ainda não existir. Depois:
+
+1. Defina `BOOTSTRAP_ADMIN_ENABLED=false`
+2. Remova `BOOTSTRAP_ADMIN_PASSWORD`
+3. Faça login em `/login` com o e-mail/senha reais
+
+Não use `SEED_DEV_DATA=true` em produção (isso cria apenas contas demo de desenvolvimento).
+
+### Outros hosts (opcional)
+
+O backend ASP.NET Core também pode ir para Azure App Service, Cloud Run ou VPS. Veja `backend/README.md`.
 
 ## Próximos passos
 

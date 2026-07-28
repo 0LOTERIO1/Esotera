@@ -185,6 +185,10 @@ try
             await seeder.SeedAsync();
         }
 
+        // Bootstrap seguro do primeiro Admin (somente se BOOTSTRAP_ADMIN_ENABLED=true).
+        var adminBootstrap = scope.ServiceProvider.GetRequiredService<AdminBootstrap>();
+        await adminBootstrap.RunAsync();
+
         Log.Information("Esotera API iniciada em {Urls}", string.Join(", ", app.Urls));
     }
 

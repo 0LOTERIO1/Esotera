@@ -105,6 +105,7 @@ public static class DependencyInjection
         services.AddScoped<INewsletterService, NewsletterService>();
 
         services.AddScoped<DevSeed>();
+        services.AddScoped<AdminBootstrap>();
 
         return services;
     }

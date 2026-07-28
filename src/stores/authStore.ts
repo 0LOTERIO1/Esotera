@@ -68,12 +68,22 @@ export const useAuthStore = create<AuthState>()(
         return user;
       },
       loginDemoCustomer: async () => {
+        if (isApiMode()) {
+          throw new Error(
+            "Login de demonstração indisponível no modo API. Use uma conta real."
+          );
+        }
         const repo = getAuthRepository();
         const user = await repo.loginDemoCustomer();
         set({ user, rememberMe: true });
         return user;
       },
       loginDemoAdmin: async () => {
+        if (isApiMode()) {
+          throw new Error(
+            "Login de demonstração indisponível no modo API. Use o administrador real."
+          );
+        }
         const repo = getAuthRepository();
         const user = await repo.loginDemoAdmin();
         set({ user, rememberMe: true });

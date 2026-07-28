@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
+import { isMockMode } from "@/config/dataMode";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 
@@ -13,7 +14,10 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") || "/minha-conta";
   const login = useAuthStore((s) => s.login);
+  const loginDemoCustomer = useAuthStore((s) => s.loginDemoCustomer);
+  const loginDemoAdmin = useAuthStore((s) => s.loginDemoAdmin);
   const push = useToastStore((s) => s.push);
+  const showDemoLogins = isMockMode();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -91,6 +95,58 @@ function LoginForm() {
           {submitting ? "Entrando…" : "Entrar"}
         </Button>
       </form>
+
+      {showDemoLogins ? (
+        <div className="mt-6 space-y-2 border-t border-esotera-border pt-6">
+          <p className="text-center text-xs text-esotera-muted">
+            Acesso rápido (somente modo mock local)
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={submitting}
+              onClick={async () => {
+                setSubmitting(true);
+                setError(null);
+                try {
+                  const user = await loginDemoCustomer();
+                  push("success", `Olá, ${user.name.split(" ")[0]}!`);
+                  redirectAfterLogin(user.role);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Falha no login demo.");
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+            >
+              Cliente demo
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={submitting}
+              onClick={async () => {
+                setSubmitting(true);
+                setError(null);
+                try {
+                  const user = await loginDemoAdmin();
+                  push("success", `Olá, ${user.name.split(" ")[0]}!`);
+                  redirectAfterLogin(user.role);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Falha no login demo.");
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+            >
+              Admin demo
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <p className="mt-4 text-center text-sm text-esotera-muted">
         <Link

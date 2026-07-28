@@ -119,7 +119,13 @@ Veja `.env.example` para todas as variáveis disponíveis:
 | `Jwt__Key` | Chave secreta para tokens JWT | (veja appsettings) |
 | `CORS_ALLOWED_ORIGINS` | Origens permitidas para CORS | http://localhost:3000 |
 | `IMAGE_STORAGE_PATH` | Caminho para armazenamento de imagens | ../storage/products |
-| `SEED_DEV_DATA` | Se deve popular dados de demonstração | true em Development |
+| `SEED_DEV_DATA` | Popular dados de demonstração (não usar em produção) | true em Development |
+| `BOOTSTRAP_ADMIN_ENABLED` | Criar o primeiro Admin real no start | false |
+| `BOOTSTRAP_ADMIN_NAME` | Nome do Admin bootstrap | — |
+| `BOOTSTRAP_ADMIN_EMAIL` | E-mail do Admin bootstrap | — |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Senha em texto (hasheada com BCrypt; nunca logada) | — |
+
+Após o bootstrap bem-sucedido, defina `BOOTSTRAP_ADMIN_ENABLED=false` e remova `BOOTSTRAP_ADMIN_PASSWORD`.
 
 ## Estrutura de Pastas
 

@@ -6,7 +6,7 @@ import type { User } from "@/types";
 
 /**
  * Auth via API .NET (JWT).
- * Botões demo usam as mesmas contas seed do backend.
+ * Contas de demonstração não estão disponíveis no modo API — use o Admin bootstrap ou cadastro real.
  */
 export class ApiAuthRepository implements IAuthRepository {
   async login(email: string, password: string): Promise<User> {
@@ -28,11 +28,15 @@ export class ApiAuthRepository implements IAuthRepository {
   }
 
   async loginDemoCustomer(): Promise<User> {
-    return this.login("cliente@esotera.demo", "demo123");
+    throw new Error(
+      "Login de demonstração indisponível no modo API. Use uma conta real cadastrada."
+    );
   }
 
   async loginDemoAdmin(): Promise<User> {
-    return this.login("admin@esotera.demo", "demo123");
+    throw new Error(
+      "Login de demonstração indisponível no modo API. Use o administrador real da API."
+    );
   }
 
   async logout(): Promise<void> {

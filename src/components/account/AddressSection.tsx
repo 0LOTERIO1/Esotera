@@ -282,7 +282,7 @@ export function AddressSection() {
                     : "border-esotera-border"
                 }`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="space-y-3">
                   <div className="text-esotera-muted">
                     {address.isPrimary ? (
                       <span className="mb-2 inline-block rounded bg-esotera-primary/15 px-2 py-0.5 text-xs font-medium text-esotera-primary">
@@ -293,7 +293,7 @@ export function AddressSection() {
                     <p>{lines.line2}</p>
                     <p>{lines.line3}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 border-t border-esotera-border/70 pt-3">
                     {!address.isPrimary ? (
                       <Button
                         type="button"
@@ -312,7 +312,7 @@ export function AddressSection() {
                       disabled={busy}
                       onClick={() => openEdit(address)}
                     >
-                      Editar
+                      Editar endereço
                     </Button>
                     <Button
                       type="button"

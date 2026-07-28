@@ -42,7 +42,10 @@ function LoginForm() {
       push("success", `Olá, ${user.name.split(" ")[0]}!`);
       redirectAfterLogin(user.role);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha no login.");
+      const message =
+        err instanceof Error ? err.message : "Falha no login.";
+      setError(message);
+      push("error", message);
     } finally {
       setSubmitting(false);
     }

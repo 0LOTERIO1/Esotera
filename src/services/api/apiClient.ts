@@ -14,7 +14,10 @@ export class ApiError extends Error {
   /** Mensagem amigável para exibir na UI (sem detalhes técnicos) */
   get userMessage(): string {
     if (this.status === 0) {
-      return "Não foi possível conectar à API. Verifique se o backend está em execução.";
+      return (
+        this.detail ||
+        "Não foi possível conectar à API. Verifique sua conexão e tente novamente."
+      );
     }
     if (this.status === 400) {
       if (this.errors) {
@@ -26,7 +29,8 @@ export class ApiError extends Error {
       return this.detail || "Dados inválidos. Revise as informações e tente novamente.";
     }
     if (this.status === 401) {
-      return "Sessão expirada ou credenciais inválidas. Faça login novamente.";
+      // Preferir detalhe da API (ex.: login) em vez de mensagem genérica de sessão.
+      return this.detail || "Credenciais inválidas. Verifique e-mail e senha.";
     }
     if (this.status === 403) {
       return "Você não tem permissão para esta ação.";
@@ -39,6 +43,12 @@ export class ApiError extends Error {
         this.detail ||
         "Os dados desta tentativa foram alterados. Revise o pedido e tente novamente."
       );
+    }
+    if (this.status === 429) {
+      return "Muitas tentativas. Aguarde cerca de 1 minuto e tente novamente.";
+    }
+    if (this.status === 502 || this.status === 503 || this.status === 504) {
+      return "A API está iniciando ou temporariamente indisponível. Tente novamente em alguns segundos.";
     }
     if (this.status >= 500) {
       return "Erro no servidor. Tente novamente em instantes.";
@@ -57,26 +67,44 @@ function getBaseUrl(): string {
   return url && url.length > 0 ? url.replace(/\/$/, "") : "http://localhost:5080";
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function parseError(response: Response): Promise<ApiError> {
+  const status = response.status;
+  const fallbackTitle =
+    status === 429
+      ? "Muitas tentativas"
+      : status === 502 || status === 503 || status === 504
+        ? "API indisponível"
+        : "Erro ao comunicar com o servidor";
+
+  const text = await response.text().catch(() => "");
+  if (!text.trim()) {
+    return new ApiError(status, fallbackTitle, undefined);
+  }
+
   try {
-    const data = (await response.json()) as {
+    const data = JSON.parse(text) as {
       title?: string;
       detail?: string;
       errors?: Record<string, string[]>;
     };
     return new ApiError(
-      response.status,
-      data.title || "Erro",
+      status,
+      data.title || fallbackTitle,
       data.detail,
       data.errors,
     );
   } catch {
-    return new ApiError(
-      response.status,
-      "Erro ao comunicar com o servidor",
-      undefined,
-    );
+    // HTML/texto do gateway (cold start Render, proxy, etc.)
+    return new ApiError(status, fallbackTitle, undefined);
   }
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -99,47 +127,79 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   const sentBearer = Boolean(headers.Authorization);
+  const maxAttempts = 2;
+  let lastNetworkError: unknown;
 
-  let response: Response;
-  try {
-    response = await fetch(url, { ...init, headers });
-  } catch {
-    throw new ApiError(
-      0,
-      "API indisponível",
-      "Não foi possível conectar à API. Verifique se o backend está em execução.",
-    );
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(url, { ...init, headers });
+    } catch (error) {
+      lastNetworkError = error;
+      // Cold start / rede: uma nova tentativa após breve espera.
+      if (attempt < maxAttempts) {
+        await sleep(1500);
+        continue;
+      }
+      throw new ApiError(
+        0,
+        "API indisponível",
+        "Não foi possível conectar à API. Se o serviço acabou de despertar, aguarde alguns segundos e tente de novo.",
+      );
+    }
+
+    // Só invalida sessão se um JWT foi enviado e rejeitado (token inválido/expirado).
+    if (response.status === 401 && auth && sentBearer) {
+      sessionService.notifyUnauthorized();
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "Sessão expirada. Faça login novamente.",
+      );
+    }
+
+    if (response.status === 401 && auth && !sentBearer) {
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "É necessário estar autenticado na API para esta ação.",
+      );
+    }
+
+    if (!response.ok && isRetryableStatus(response.status) && attempt < maxAttempts) {
+      await sleep(1500);
+      continue;
+    }
+
+    if (!response.ok) {
+      throw await parseError(response);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const text = await response.text();
+    if (!text.trim()) {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new ApiError(
+        response.status,
+        "Resposta inválida",
+        "A API retornou uma resposta inesperada. Tente novamente.",
+      );
+    }
   }
 
-  // Só invalida sessão se um JWT foi enviado e rejeitado (token inválido/expirado).
-  // Requisição sem Bearer que recebe 401 (ex.: página admin em modo mock) NÃO deve
-  // apagar o usuário persistido nem forçar logout.
-  if (response.status === 401 && auth && sentBearer) {
-    sessionService.notifyUnauthorized();
-    throw new ApiError(
-      401,
-      "Não autorizado",
-      "Sessão expirada. Faça login novamente.",
-    );
-  }
-
-  if (response.status === 401 && auth && !sentBearer) {
-    throw new ApiError(
-      401,
-      "Não autorizado",
-      "É necessário estar autenticado na API para esta ação.",
-    );
-  }
-
-  if (!response.ok) {
-    throw await parseError(response);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
+  void lastNetworkError;
+  throw new ApiError(
+    0,
+    "API indisponível",
+    "Não foi possível conectar à API. Tente novamente em instantes.",
+  );
 }
 
 export const apiClient = {

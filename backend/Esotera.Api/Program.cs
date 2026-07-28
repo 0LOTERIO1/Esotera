@@ -85,7 +85,7 @@ try
         options.AddFixedWindowLimiter("auth", limiter =>
         {
             // Em testes, muitos registros em sequência — limite alto para não mascarar falhas reais
-            limiter.PermitLimit = isTesting ? 10_000 : 10;
+            limiter.PermitLimit = isTesting ? 10_000 : 30;
             limiter.Window = TimeSpan.FromMinutes(1);
             limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
             limiter.QueueLimit = 0;

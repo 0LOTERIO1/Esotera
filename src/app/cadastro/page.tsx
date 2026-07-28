@@ -65,6 +65,7 @@ function RegisterForm() {
   const [form, setForm] = useState<FormState>(initial);
   const [errors, setErrors] = useState<Errors>({});
   const [cepTouched, setCepTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -140,13 +141,27 @@ function RegisterForm() {
     if (!form.terms) next.terms = "Aceite os termos para continuar.";
     if (!form.privacy) next.privacy = "Aceite a política de privacidade.";
     setErrors(next);
-    return Object.keys(next).length === 0;
+    const ok = Object.keys(next).length === 0;
+    if (!ok) {
+      const firstKey = Object.keys(next)[0];
+      // Rola até o primeiro campo com erro — o botão fica no rodapé e o usuário
+      // não via feedback quando o problema estava no topo (e-mail/CPF).
+      window.setTimeout(() => {
+        const el =
+          document.getElementById(`${firstKey}-error`) ||
+          document.getElementById(firstKey);
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 0);
+      push("error", "Revise os campos destacados para criar a conta.");
+    }
+    return ok;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (lookingUp) return;
+    if (lookingUp || submitting) return;
     if (!validate()) return;
+    setSubmitting(true);
     try {
       await register({
         name: form.name,
@@ -170,6 +185,13 @@ function RegisterForm() {
       const fieldErrors = mapRegisterApiFieldErrors(err);
       if (Object.keys(fieldErrors).length > 0) {
         setErrors(fieldErrors);
+        const firstKey = Object.keys(fieldErrors)[0];
+        window.setTimeout(() => {
+          const el =
+            document.getElementById(`${firstKey}-error`) ||
+            document.getElementById(firstKey);
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 0);
         return;
       }
 
@@ -184,7 +206,16 @@ function RegisterForm() {
         setErrors({ form: message });
       } else {
         setErrors({ [field]: message });
+        window.setTimeout(() => {
+          const el =
+            document.getElementById(`${field}-error`) ||
+            document.getElementById(field);
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 0);
       }
+      push("error", message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -466,8 +497,16 @@ function RegisterForm() {
         </div>
 
         <div className="sm:col-span-2">
-          <Button type="submit" className="w-full sm:w-auto" disabled={lookingUp}>
-            {lookingUp ? "Buscando CEP..." : "Criar conta"}
+          <Button
+            type="submit"
+            className="w-full sm:w-auto"
+            disabled={lookingUp || submitting}
+          >
+            {lookingUp
+              ? "Buscando CEP..."
+              : submitting
+                ? "Criando conta…"
+                : "Criar conta"}
           </Button>
         </div>
       </form>

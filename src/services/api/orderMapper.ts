@@ -63,9 +63,9 @@ export type ApiOrderListItemDto = {
 };
 
 function formatEstimatedDays(days: number): string {
-  if (days <= 0) return "Hoje (mesmo dia) — simulado";
-  if (days === 1) return "1 dia útil — simulado";
-  return `${days} dias úteis — simulado`;
+  if (days <= 0) return "Hoje (mesmo dia)";
+  if (days === 1) return "1 dia útil";
+  return `${days} dias úteis`;
 }
 
 /**

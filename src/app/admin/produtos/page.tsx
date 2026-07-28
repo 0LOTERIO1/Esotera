@@ -375,7 +375,7 @@ export default function AdminProductsPage() {
           <p className="mt-1 text-sm text-esotera-muted">
             {apiMode
               ? "Gestão real via API: cadastro, edição, imagens (Cloudinary) e arquivamento."
-              : "Modo demonstração (localStorage). Upload usa pré-visualização local."}
+              : "Dados locais no navegador (modo mock). Upload com pré-visualização local."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

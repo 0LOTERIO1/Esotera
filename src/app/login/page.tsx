@@ -7,16 +7,12 @@ import { FormField, inputClassName } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
-import { DEMO_PASSWORD_HINT } from "@/config/demoUsers";
-import { isApiMode } from "@/config/dataMode";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") || "/minha-conta";
   const login = useAuthStore((s) => s.login);
-  const loginDemoCustomer = useAuthStore((s) => s.loginDemoCustomer);
-  const loginDemoAdmin = useAuthStore((s) => s.loginDemoAdmin);
   const push = useToastStore((s) => s.push);
 
   const [email, setEmail] = useState("");
@@ -48,13 +44,16 @@ function LoginForm() {
     }
   }
 
+  const registerHref =
+    returnUrl && returnUrl !== "/minha-conta"
+      ? `/cadastro?returnUrl=${encodeURIComponent(returnUrl)}`
+      : "/cadastro";
+
   return (
     <div className="mx-auto max-w-md px-4 py-12 sm:px-6">
       <h1 className="font-serif text-4xl text-esotera-secondary">Entrar</h1>
       <p className="mt-2 text-sm text-esotera-muted">
-        {isApiMode()
-          ? "Autenticação via API. Contas demo: cliente@esotera.demo / admin@esotera.demo"
-          : `Login simulado do protótipo. Senha demo: ${DEMO_PASSWORD_HINT}`}
+        Acesse sua conta para continuar a compra ou acompanhar pedidos.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -94,60 +93,15 @@ function LoginForm() {
       </form>
 
       <p className="mt-4 text-center text-sm text-esotera-muted">
-        <span className="cursor-default underline decoration-dotted">
-          Recuperar senha (visual)
+        <span className="cursor-default text-esotera-muted/80">
+          Esqueci minha senha
         </span>
       </p>
 
-      <div className="mt-6 space-y-2">
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          disabled={submitting}
-          onClick={async () => {
-            setError(null);
-            setSubmitting(true);
-            try {
-              const user = await loginDemoCustomer();
-              push("success", "Entrou como cliente de demonstração.");
-              redirectAfterLogin(user.role);
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Falha no login demo.");
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-        >
-          Entrar como usuário de demonstração
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          disabled={submitting}
-          onClick={async () => {
-            setError(null);
-            setSubmitting(true);
-            try {
-              await loginDemoAdmin();
-              push("success", "Entrou como administrador de demonstração.");
-              router.push("/admin");
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Falha no login demo.");
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-        >
-          Entrar como administrador de demonstração
-        </Button>
-      </div>
-
       <p className="mt-6 text-center text-sm text-esotera-muted">
         Não tem conta?{" "}
-        <Link href="/cadastro" className="text-esotera-primary hover:underline">
-          Cadastre-se
+        <Link href={registerHref} className="text-esotera-primary hover:underline">
+          Criar conta
         </Link>
       </p>
     </div>

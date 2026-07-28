@@ -38,14 +38,10 @@ export function Footer() {
               </Link>
             </li>
           </ul>
-          <p className="mt-4 text-xs text-esotera-muted">
-            Contato e redes sociais serão publicados com os dados oficiais da
-            loja.
-          </p>
         </div>
       </div>
       <div className="border-t border-esotera-border py-4 text-center text-xs text-esotera-muted">
-        © {new Date().getFullYear()} {storeName}. Protótipo de demonstração.
+        © {new Date().getFullYear()} {storeName}. Todos os direitos reservados.
       </div>
     </footer>
   );

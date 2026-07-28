@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useState } from "react";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { brazilianStates } from "@/data/brazilianStates";
@@ -51,8 +51,10 @@ const initial: FormState = {
   privacy: false,
 };
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("returnUrl") || "/minha-conta";
   const register = useAuthStore((s) => s.register);
   const push = useToastStore((s) => s.push);
   const [form, setForm] = useState<FormState>(initial);
@@ -143,8 +145,8 @@ export default function RegisterPage() {
           state: form.state,
         },
       });
-      push("success", "Conta criada com sucesso (simulação).");
-      router.push("/minha-conta");
+      push("success", "Conta criada com sucesso.");
+      router.push(returnUrl || "/minha-conta");
     } catch (err) {
       setErrors({
         email: err instanceof Error ? err.message : "Erro no cadastro.",
@@ -152,12 +154,17 @@ export default function RegisterPage() {
     }
   }
 
+  const loginHref =
+    returnUrl && returnUrl !== "/minha-conta"
+      ? `/login?returnUrl=${encodeURIComponent(returnUrl)}`
+      : "/login";
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
       <h1 className="font-serif text-4xl text-esotera-secondary">Cadastro</h1>
       <p className="mt-2 text-sm text-esotera-muted">
-        Cadastro simulado. A senha não é armazenada em texto puro — apenas a
-        sessão e dados não sensíveis.
+        Crie sua conta para acompanhar pedidos e finalizar compras com
+        segurança.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 grid gap-4 sm:grid-cols-2" noValidate>
@@ -327,7 +334,7 @@ export default function RegisterPage() {
               className="mt-1"
             />
             <span>
-              Aceito os termos de uso (visual)
+              Aceito os termos de uso
               {errors.terms ? (
                 <span className="mt-1 block text-xs text-esotera-error" role="alert">
                   {errors.terms}
@@ -343,7 +350,7 @@ export default function RegisterPage() {
               className="mt-1"
             />
             <span>
-              Aceito a política de privacidade (visual)
+              Aceito a política de privacidade
               {errors.privacy ? (
                 <span className="mt-1 block text-xs text-esotera-error" role="alert">
                   {errors.privacy}
@@ -362,10 +369,22 @@ export default function RegisterPage() {
 
       <p className="mt-6 text-sm text-esotera-muted">
         Já tem conta?{" "}
-        <Link href="/login" className="text-esotera-primary hover:underline">
+        <Link href={loginHref} className="text-esotera-primary hover:underline">
           Entrar
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="px-4 py-12 text-center text-esotera-muted">Carregando…</div>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
   );
 }

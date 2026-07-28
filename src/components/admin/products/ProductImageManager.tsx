@@ -76,7 +76,7 @@ export function ProductImageManager({
           JPEG, PNG ou WebP · máx. {(MAX_IMAGE_BYTES / (1024 * 1024)).toFixed(0)} MB · até 8
           imagens.
           {mockMode
-            ? " Modo demonstração: pré-visualização local (sem Cloudinary)."
+            ? " Pré-visualização local (modo mock, sem Cloudinary)."
             : " Upload via API → Cloudinary."}
         </p>
       </div>

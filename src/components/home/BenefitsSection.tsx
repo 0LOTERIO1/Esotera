@@ -4,12 +4,12 @@ const benefits = [
   {
     icon: Truck,
     title: "Entrega para todo o Brasil",
-    text: "Envios simulados com modalidades Econômico e Expresso.",
+    text: "Consulte as opções, valores e prazos disponíveis para o seu CEP.",
   },
   {
     icon: ShieldCheck,
     title: "Pagamento seguro",
-    text: "Fluxo de pagamento simulado — sem cobrança real.",
+    text: "Compre com segurança e acompanhe seu pedido pela sua conta.",
   },
   {
     icon: Sparkles,
@@ -18,8 +18,8 @@ const benefits = [
   },
   {
     icon: MapPinned,
-    title: "Mesmo dia em SP",
-    text: "Entrega no mesmo dia para regiões elegíveis de São Paulo (J3 simulada).",
+    title: "Entrega rápida em São Paulo",
+    text: "Entrega no mesmo dia para regiões e horários elegíveis.",
   },
 ];
 
@@ -30,7 +30,7 @@ export function BenefitsSection() {
         Benefícios
       </h2>
       <p className="mt-2 text-sm text-esotera-muted">
-        O que você encontra nesta experiência de compra.
+        Por que comprar na Esotera.
       </p>
       <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {benefits.map((item) => (

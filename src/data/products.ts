@@ -1,11 +1,9 @@
 import type { Product } from "@/types";
 
 /**
- * Catálogo do protótipo.
+ * Catálogo inicial (mock / seed local).
  * Produto 1: dados confirmados (nome, preço e conteúdo básico).
  * Produtos 2–6: nomes e preços de referência pública da loja.
- * Imagens atuais: geradas por IA para demonstração — substituir pelas fotos oficiais do cliente.
- * TODO: substituir fotos de demonstração e textos pendentes por conteúdo oficial.
  */
 export const initialProducts: Product[] = [
   {
@@ -41,10 +39,9 @@ export const initialProducts: Product[] = [
     id: "prod-lenormand-primavera",
     slug: "taro-cigano-lenormand-primavera-rosa",
     name: "Tarô Cigano Baralho Lenormand Primavera Rosa",
-    shortDescription:
-      "Baralho Lenormand com 36 cartas e manual. (Demonstração — descrição completa pendente.)",
+    shortDescription: "Baralho Lenormand com 36 cartas e manual.",
     description:
-      "[Demonstração] Baralho Lenormand Primavera Rosa com 36 cartas e manual. Descrição oficial e fotos precisam ser fornecidas pelo cliente. Nome e preço de referência pública da loja Esotera.",
+      "Baralho Lenormand Primavera Rosa com 36 cartas e manual. Ideal para leituras práticas e estudos do sistema Lenormand.",
     price: 39.9,
     category: "Tarôs",
     images: ["/images/products/lenormand-primavera.png"],
@@ -58,10 +55,9 @@ export const initialProducts: Product[] = [
     id: "prod-livro-waite",
     slug: "livro-de-waite-manual-explicativo",
     name: "Livro de Waite Manual Explicativo para Tarot de Waite",
-    shortDescription:
-      "Manual explicativo de aproximadamente 160 páginas. (Demonstração.)",
+    shortDescription: "Manual explicativo de aproximadamente 160 páginas.",
     description:
-      "[Demonstração] Manual explicativo para o Tarot de Waite. Conteúdo detalhado e fotos oficiais pendentes de envio pelo cliente. Nome e preço de referência pública.",
+      "Manual explicativo para o Tarot de Waite, com conteúdo pensado para apoiar iniciantes e leitores em aprofundamento.",
     price: 39.9,
     category: "Livros",
     images: ["/images/products/livro-waite.png"],
@@ -76,9 +72,9 @@ export const initialProducts: Product[] = [
     slug: "toalha-roxa-saquinho-taro",
     name: "Toalha Roxa + Saquinho para Guardar Cartas de Tarô",
     shortDescription:
-      "Conjunto de toalha e saquinho para cuidado das cartas. (Demonstração.)",
+      "Conjunto de toalha e saquinho para cuidado das cartas.",
     description:
-      "[Demonstração] Toalha roxa com saquinho para guardar cartas de tarô. Especificações e fotos oficiais precisam ser enviadas pelo cliente.",
+      "Toalha roxa com saquinho para guardar e proteger cartas de tarô durante o uso e o armazenamento.",
     price: 49.9,
     category: "Acessórios",
     images: ["/images/products/toalha-roxa.png"],
@@ -92,10 +88,9 @@ export const initialProducts: Product[] = [
     id: "prod-taro-bruxas",
     slug: "taro-das-bruxas-com-livro",
     name: "Tarô das Bruxas com 78 Cartas e Livro Explicativo",
-    shortDescription:
-      "Baralho temático com 78 cartas e livro. (Demonstração.)",
+    shortDescription: "Baralho temático com 78 cartas e livro.",
     description:
-      "[Demonstração] Tarô das Bruxas com 78 cartas e livro explicativo. Descrição completa e imagens oficiais pendentes. Nome e preço de referência pública.",
+      "Tarô das Bruxas com 78 cartas e livro explicativo, com estética e simbolismo voltados a leituras intuitivas.",
     price: 29.9,
     category: "Tarôs",
     images: ["/images/products/taro-bruxas.png"],
@@ -110,9 +105,9 @@ export const initialProducts: Product[] = [
     slug: "rider-waite-taro-para-iniciante",
     name: "Rider Waite Tarô Esotera para Iniciante",
     shortDescription:
-      "Edição para iniciantes com ilustrações e explicações nas cartas. (Demonstração.)",
+      "Edição para iniciantes com ilustrações e explicações nas cartas.",
     description:
-      "[Demonstração] Rider Waite para iniciantes com 78 cartas ilustradas e explicativas. Conteúdo oficial e fotos precisam ser fornecidos pelo cliente.",
+      "Rider Waite para iniciantes com 78 cartas ilustradas e explicativas, pensado para facilitar o aprendizado.",
     price: 54.9,
     category: "Tarôs",
     images: ["/images/products/waite-iniciante.png"],

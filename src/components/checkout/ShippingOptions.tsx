@@ -70,9 +70,6 @@ export function ShippingOptions({
       {freeShippingHint ? (
         <p className="text-xs text-esotera-success">{freeShippingHint}</p>
       ) : null}
-      <p className="text-xs text-esotera-muted">
-        Cobertura J3 simulada — não representa a cobertura oficial.
-      </p>
       <div className="space-y-2">
         {options.map((option) => {
           const selected = selectedId === option.id;

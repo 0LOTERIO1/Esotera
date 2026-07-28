@@ -67,7 +67,7 @@ export default function AdminDashboardPage() {
   const maxBar = Math.max(...dashboard.recentOrders.map((o) => o.total), 1);
   const cards = [
     { label: "Total de pedidos", value: String(dashboard.totalOrders) },
-    { label: "Vendas simuladas", value: formatCurrency(dashboard.totalSales) },
+    { label: "Vendas", value: formatCurrency(dashboard.totalSales) },
     {
       label: "Aguardando pagamento",
       value: String(dashboard.awaitingPayment),
@@ -94,8 +94,7 @@ export default function AdminDashboardPage() {
     <div>
       <h1 className="font-serif text-3xl text-esotera-secondary">Dashboard</h1>
       <p className="mt-1 text-sm text-esotera-muted">
-        Dados reais do backend. Vendas excluem pedidos cancelados. Pagamentos
-        simulados.
+        Resumo operacional da loja. Totais excluem pedidos cancelados.
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">

@@ -117,8 +117,8 @@ export default function OrderDetailPage({
       <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-esotera-muted">
         {formatDate(order.createdAt)} <StatusBadge status={order.status} />
       </p>
-      <p className="mt-2 text-xs text-esotera-muted">
-        Pagamento simulado — nenhuma cobrança real foi realizada.
+      <p className="mt-2 text-sm text-esotera-muted">
+        Acompanhe o status do pagamento e da entrega nesta página.
       </p>
 
       <section className="mt-8 space-y-3">
@@ -159,7 +159,7 @@ export default function OrderDetailPage({
           <h2 className="text-esotera-text">Pagamento</h2>
           <p className="mt-2">{paymentMethodLabels[order.payment.method]}</p>
           {order.payment.installments ? (
-            <p>{order.payment.installments}x (simulado)</p>
+            <p>{order.payment.installments}x sem juros</p>
           ) : null}
           <p className="mt-1 text-xs">{order.payment.status}</p>
         </div>

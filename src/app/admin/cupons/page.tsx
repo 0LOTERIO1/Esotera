@@ -229,7 +229,7 @@ export default function AdminCouponsPage() {
           <p className="mt-1 text-sm text-esotera-muted">
             {apiMode
               ? "Gerencie cupons reais pela API. Uma utilização por cliente; limite global opcional."
-              : "Modo demonstração (mock). Dados isolados no navegador."}
+              : "Dados locais no navegador (modo mock)."}
           </p>
         </div>
         <Button type="button" onClick={openCreate}>

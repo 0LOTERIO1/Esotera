@@ -4,6 +4,7 @@ import { ProductImage } from "@/components/ui/ProductImage";
 import Link from "next/link";
 import { useState } from "react";
 import { useCartStore } from "@/stores/cartStore";
+import { useAuthStore } from "@/stores/authStore";
 import { useCartTotals } from "@/hooks/useCartTotals";
 import { QuantitySelector } from "@/components/ui/QuantitySelector";
 import { Price } from "@/components/ui/Price";
@@ -17,8 +18,12 @@ export default function CartPage() {
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
   const clearCart = useCartStore((s) => s.clearCart);
+  const user = useAuthStore((s) => s.user);
   const { lines } = useCartTotals();
   const [confirmClear, setConfirmClear] = useState(false);
+  const checkoutHref = user
+    ? "/checkout"
+    : "/login?returnUrl=/checkout";
 
   if (!lines.length) {
     return (
@@ -106,7 +111,7 @@ export default function CartPage() {
 
         <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <OrderSummary />
-          <ButtonLink href="/checkout" className="w-full">
+          <ButtonLink href={checkoutHref} className="w-full">
             Ir para o checkout
           </ButtonLink>
           <ButtonLink href="/produtos" variant="secondary" className="w-full">

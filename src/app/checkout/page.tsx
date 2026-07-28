@@ -19,7 +19,6 @@ import {
   qualifiesForFreeShipping,
 } from "@/services/shipping/mockShippingService";
 import type { PaymentMethod, SavedAddress, ShippingOption } from "@/types";
-import { storeConfig } from "@/config/store";
 import { Price } from "@/components/ui/Price";
 import { useToastStore } from "@/stores/toastStore";
 import { formatAddressLines } from "@/utils/address";
@@ -30,6 +29,10 @@ import {
   fingerprintOrderAttempt,
 } from "@/utils/orderIdempotency";
 import { isApiMode } from "@/config/dataMode";
+import {
+  canCompleteCheckoutWithoutRealPayment,
+  isRealPaymentEnabled,
+} from "@/config/storeMode";
 
 const steps = [
   "Identificação",
@@ -222,6 +225,14 @@ export default function CheckoutPage() {
     if (!selectedAddress || !selectedShipping || !user || finishing) return;
     if (activeRequestRef.current) return;
 
+    if (!isRealPaymentEnabled() && !canCompleteCheckoutWithoutRealPayment()) {
+      push(
+        "info",
+        "A finalização de compras estará disponível em breve, quando o pagamento estiver integrado.",
+      );
+      return;
+    }
+
     // Modo API: somente addressId do usuário autenticado (sem endereço inline)
     if (isApiMode() && !selectedAddress.id) {
       push("error", "Selecione um endereço de entrega válido da sua conta.");
@@ -295,12 +306,7 @@ export default function CheckoutPage() {
       attemptFingerprintRef.current = null;
       setUncertainResult(false);
       clearCart();
-      push(
-        "success",
-        isApiMode()
-          ? "Pedido criado com sucesso."
-          : "Pedido simulado criado com sucesso.",
-      );
+      push("success", "Pedido criado com sucesso.");
       router.push(`/pedido-confirmado/${order.id}`);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -352,10 +358,15 @@ export default function CheckoutPage() {
     ? formatAddressLines(selectedAddress)
     : null;
 
+  const checkoutBlocked =
+    !isRealPaymentEnabled() && !canCompleteCheckoutWithoutRealPayment();
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="font-serif text-4xl text-esotera-secondary">Checkout</h1>
-      <p className="mt-2 text-sm text-esotera-primary">{storeConfig.demoNotice}</p>
+      <p className="mt-2 text-sm text-esotera-muted">
+        Confirme endereço, frete e forma de pagamento para concluir seu pedido.
+      </p>
 
       <ol className="mt-6 flex flex-wrap gap-2" aria-label="Etapas do checkout">
         {steps.map((label, index) => (
@@ -439,9 +450,6 @@ export default function CheckoutPage() {
               <h2 className="mb-4 font-serif text-2xl text-esotera-text">
                 Pagamento
               </h2>
-              <p className="mb-4 text-xs text-esotera-muted">
-                Pagamento simulado — Pix, cartão e boleto não geram cobrança real.
-              </p>
               <PaymentOptions
                 method={paymentMethod}
                 installments={installments}
@@ -530,15 +538,15 @@ export default function CheckoutPage() {
                 <Button
                   type="button"
                   onClick={() => void finish()}
-                  disabled={finishing}
+                  disabled={finishing || checkoutBlocked}
                 >
                   {finishing
                     ? "Processando pedido..."
                     : uncertainResult
                       ? "Tentar novamente"
-                      : isApiMode()
-                        ? "Finalizar pedido"
-                        : "Finalizar pedido (simulação)"}
+                      : checkoutBlocked
+                        ? "Pagamento em breve"
+                        : "Finalizar pedido"}
                 </Button>
               </div>
             )}

@@ -8,7 +8,7 @@ export default function ProductNotFound() {
         Produto não encontrado
       </h1>
       <p className="mt-3 text-sm text-esotera-muted">
-        O item solicitado não existe neste catálogo de demonstração.
+        O item solicitado não foi encontrado no catálogo.
       </p>
       <div className="mt-8">
         <ButtonLink href="/produtos">Voltar ao catálogo</ButtonLink>

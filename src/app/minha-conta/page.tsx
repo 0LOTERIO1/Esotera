@@ -24,7 +24,6 @@ export default function AccountPage() {
   const authReady = hydrated && sessionReady;
   const fetchMineSummaries = useOrdersStore((s) => s.fetchMineSummaries);
   const push = useToastStore((s) => s.push);
-  const [returnRequest, setReturnRequest] = useState(false);
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [ordersError, setOrdersError] = useState<string | null>(null);
@@ -188,25 +187,12 @@ export default function AccountPage() {
           Troca ou devolução
         </h2>
         <p className="mt-2 text-sm text-esotera-muted">
-          Solicitação apenas visual neste protótipo — nenhum processo real é
-          iniciado.
+          Em breve você poderá solicitar troca ou devolução por aqui. Enquanto
+          isso, acompanhe seus pedidos nesta página.
         </p>
-        <Button
-          type="button"
-          variant="secondary"
-          className="mt-4"
-          onClick={() => {
-            setReturnRequest(true);
-            push("info", "Solicitação visual registrada.");
-          }}
-        >
-          Solicitar troca/devolução
+        <Button type="button" variant="secondary" className="mt-4" disabled>
+          Em breve
         </Button>
-        {returnRequest ? (
-          <p role="status" className="mt-3 text-xs text-esotera-success">
-            Pedido de troca/devolução simulado enviado.
-          </p>
-        ) : null}
       </section>
     </div>
   );

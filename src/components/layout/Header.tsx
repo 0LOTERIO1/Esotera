@@ -64,7 +64,9 @@ export function Header() {
               <span className="max-w-[9rem] truncate text-sm font-medium">
                 {user.name.split(" ")[0]}
               </span>
-            ) : null}
+            ) : (
+              <span className="text-sm font-medium">Entrar</span>
+            )}
           </Link>
           <Link
             href="/carrinho"

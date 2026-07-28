@@ -45,6 +45,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     if (!authReady) return;
     if (!user) {
       router.replace("/login?returnUrl=/admin");
+      return;
+    }
+    if (user.role !== "admin") {
+      router.replace("/minha-conta");
     }
   }, [authReady, user, router]);
 
@@ -78,7 +82,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <ButtonLink href="/minha-conta" variant="secondary">
             Minha conta
           </ButtonLink>
-          <ButtonLink href="/">Voltar à loja</ButtonLink>
+          <ButtonLink href="/">Ir para a loja</ButtonLink>
         </div>
       </div>
     );

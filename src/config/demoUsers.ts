@@ -15,7 +15,7 @@ const emptyDemoAddress = {
 
 export const demoCustomer: User = {
   id: "user-demo-customer",
-  name: "Maria Silva Demonstração",
+  name: "Maria Silva",
   email: "cliente@esotera.demo",
   cpf: "529.982.247-25",
   phone: "(11) 98888-0000",

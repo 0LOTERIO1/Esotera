@@ -11,7 +11,6 @@ import { QuantitySelector } from "@/components/ui/QuantitySelector";
 import { Button } from "@/components/ui/Button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductGrid } from "@/components/products/ProductGrid";
-import { shippingOrigin } from "@/config/shipping";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -233,9 +232,10 @@ export default function ProductDetailPage({
               Informações de entrega
             </p>
             <p className="mt-2">
-              Envio a partir de {shippingOrigin.city} ({shippingOrigin.cep}).
-              Frete calculado no checkout. Modalidade J3 simulada para CEPs
-              elegíveis em São Paulo.
+              Enviamos para todo o Brasil. O prazo e o valor do frete são
+              calculados no checkout de acordo com o CEP informado. Em regiões
+              elegíveis de São Paulo, também pode haver opção de entrega no
+              mesmo dia.
             </p>
           </div>
         </div>

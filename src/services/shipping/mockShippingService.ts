@@ -136,12 +136,12 @@ export function quoteShipping(input: ShippingQuoteInput): ShippingOption[] {
     options.push({
       id: "j3",
       provider: "J3",
-      name: "Entrega J3 (simulada)",
+      name: "Entrega no mesmo dia",
       price: priced.price,
       originalPrice: free ? settings.j3Price : priced.originalPrice,
       estimatedDays: deliveryLabel,
       description:
-        "Modalidade simulada para CEPs elegíveis de São Paulo. Cobertura oficial ainda não configurada.",
+        "Disponível para regiões e horários elegíveis em São Paulo.",
       isSameDay: beforeCutoff,
     });
   }
@@ -157,7 +157,7 @@ export function quoteShipping(input: ShippingQuoteInput): ShippingOption[] {
     price: eco.price,
     originalPrice: free ? me.economico.price : eco.originalPrice,
     estimatedDays: me.economico.days,
-    description: `Simulação Melhor Envio a partir de ${shippingOrigin.city}.`,
+    description: "Entrega econômica para todo o Brasil.",
   });
 
   const expBase = free ? 0 : me.expresso.price;
@@ -169,7 +169,7 @@ export function quoteShipping(input: ShippingQuoteInput): ShippingOption[] {
     price: exp.price,
     originalPrice: free ? me.expresso.price : exp.originalPrice,
     estimatedDays: me.expresso.days,
-    description: `Simulação Melhor Envio expressa a partir de ${shippingOrigin.city}.`,
+    description: "Entrega expressa com prazo reduzido.",
   });
 
   return options;

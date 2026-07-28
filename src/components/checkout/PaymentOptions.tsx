@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import type { PaymentMethod } from "@/types";
-import { storeConfig } from "@/config/store";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { maskCardExpiry, maskCardNumber } from "@/utils/masks";
 import { formatCurrency } from "@/utils/format";
+import {
+  canCompleteCheckoutWithoutRealPayment,
+  isRealPaymentEnabled,
+} from "@/config/storeMode";
 
 type PaymentOptionsProps = {
   method: PaymentMethod;
@@ -26,15 +29,36 @@ export function PaymentOptions({
   const [cardName, setCardName] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
+  const paymentsLive = isRealPaymentEnabled();
+  const allowTestingCheckout = canCompleteCheckoutWithoutRealPayment();
+
+  if (!paymentsLive && !allowTestingCheckout) {
+    return (
+      <div
+        role="status"
+        className="rounded-md border border-esotera-border bg-esotera-surface-secondary px-4 py-5 text-sm text-esotera-muted"
+      >
+        <p className="font-medium text-esotera-text">Pagamento em preparação</p>
+        <p className="mt-2">
+          Em breve você poderá finalizar sua compra com Pix, cartão ou boleto
+          de forma segura. Enquanto isso, explore o catálogo e prepare seu
+          carrinho.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      <div
-        role="status"
-        className="rounded-md border border-esotera-primary/40 bg-esotera-primary/10 px-4 py-3 text-sm text-esotera-primary"
-      >
-        {storeConfig.demoNotice}
-      </div>
+      {!paymentsLive && allowTestingCheckout ? (
+        <div
+          role="status"
+          className="rounded-md border border-esotera-border bg-esotera-surface-secondary px-4 py-3 text-sm text-esotera-muted"
+        >
+          Ambiente de homologação: o pedido será registrado para testes
+          internos. A cobrança real será ativada com a integração de pagamento.
+        </div>
+      ) : null}
 
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-esotera-text">
@@ -69,16 +93,10 @@ export function PaymentOptions({
 
       {method === "pix" ? (
         <div className="rounded-md border border-esotera-border p-4 text-sm text-esotera-muted">
-          <p>QR Code fictício — simulação apenas.</p>
-          <div
-            className="mx-auto mt-4 flex h-40 w-40 items-center justify-center border border-dashed border-esotera-primary/40 bg-esotera-surface text-center text-xs text-esotera-primary"
-            aria-hidden
-          >
-            QR Code
-            <br />
-            demonstração
-          </div>
-          <p className="mt-3">Sem desconto adicional no Pix neste protótipo.</p>
+          <p>
+            Ao finalizar, você receberá as instruções de pagamento Pix na
+            confirmação do pedido.
+          </p>
         </div>
       ) : null}
 
@@ -138,16 +156,15 @@ export function PaymentOptions({
             </select>
           </FormField>
           <p className="sm:col-span-2 text-xs text-esotera-muted">
-            Os dados do cartão são apenas visuais e não são armazenados nem
-            enviados.
+            Os dados do cartão serão processados de forma segura quando o
+            pagamento estiver integrado.
           </p>
         </div>
       ) : null}
 
       {method === "boleto" ? (
         <div className="rounded-md border border-esotera-border p-4 text-sm text-esotera-muted">
-          Será gerado um boleto fictício sem validade real ao finalizar o
-          pedido.
+          Ao finalizar, você receberá o boleto com as instruções de pagamento.
         </div>
       ) : null}
     </div>

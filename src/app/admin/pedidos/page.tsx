@@ -120,7 +120,7 @@ export default function AdminOrdersPage() {
     <div>
       <h1 className="font-serif text-3xl text-esotera-secondary">Pedidos</h1>
       <p className="mt-1 text-sm text-esotera-muted">
-        Pedidos reais · pagamento simulado
+        Pedidos da loja
       </p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -256,7 +256,8 @@ export default function AdminOrdersPage() {
               Telefone: {selected.customer.phone || "—"}
             </p>
             <p className="mt-2 text-xs text-esotera-muted">
-              Pagamento simulado — nenhuma cobrança real.
+              Gateway de pagamento ainda não integrado — status gerenciado
+              manualmente.
             </p>
 
             <FormField label="Alterar status" id="change-status">

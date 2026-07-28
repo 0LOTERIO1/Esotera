@@ -11,7 +11,6 @@ import { Price } from "@/components/ui/Price";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { paymentMethodLabels } from "@/utils/labels";
 import { formatDate } from "@/utils/format";
-import { storeConfig } from "@/config/store";
 import { ApiError } from "@/services/api/apiClient";
 import { isApiMode } from "@/config/dataMode";
 import type { Order } from "@/types";
@@ -121,8 +120,7 @@ export default function OrderConfirmedPage({
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <p className="text-sm text-esotera-primary">{storeConfig.demoNotice}</p>
-      <h1 className="mt-2 font-serif text-4xl text-esotera-secondary">
+      <h1 className="font-serif text-4xl text-esotera-secondary">
         Pedido confirmado
       </h1>
       <p className="mt-2 text-sm text-esotera-muted">
@@ -131,8 +129,8 @@ export default function OrderConfirmedPage({
       <p className="mt-1 text-sm text-esotera-muted">
         {formatDate(order.createdAt)} · <StatusBadge status={order.status} />
       </p>
-      <p className="mt-2 text-xs text-esotera-muted">
-        Pagamento simulado — nenhuma cobrança real foi realizada.
+      <p className="mt-2 text-sm text-esotera-muted">
+        Acompanhe o status do pagamento e da entrega em Minha conta.
       </p>
 
       <section className="mt-8 space-y-4 rounded-lg border border-esotera-border p-5">
@@ -166,7 +164,7 @@ export default function OrderConfirmedPage({
           <h2 className="font-serif text-lg text-esotera-text">Pagamento</h2>
           <p className="mt-2">{paymentMethodLabels[order.payment.method]}</p>
           {order.payment.installments ? (
-            <p>{order.payment.installments}x sem juros (simulado)</p>
+            <p>{order.payment.installments}x sem juros</p>
           ) : null}
           <p className="mt-1 text-xs">{order.payment.status}</p>
         </div>

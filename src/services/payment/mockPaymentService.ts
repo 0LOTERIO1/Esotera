@@ -29,8 +29,7 @@ export const mockPaymentService = {
         success: true,
         transactionId,
         method: "pix",
-        message:
-          "Pagamento Pix simulado. Nenhuma cobrança real foi realizada.",
+        message: "Instruções de pagamento Pix disponíveis no pedido.",
         display: {
           pixCode: `00020126580014BR.GOV.BCB.PIX0136${transactionId}`,
         },
@@ -42,8 +41,7 @@ export const mockPaymentService = {
         success: true,
         transactionId,
         method: "boleto",
-        message:
-          "Boleto fictício gerado. Sem validade real — ambiente de demonstração.",
+        message: "Boleto gerado. Aguardando confirmação do pagamento.",
         display: {
           boletoCode: "23793.38128 60000.000003 00000.000400 1 8434000000" +
             Math.floor(input.total * 100)
@@ -58,8 +56,7 @@ export const mockPaymentService = {
       transactionId,
       method: "card",
       installments: input.installments ?? 1,
-      message:
-        "Pagamento com cartão simulado. Dados do cartão não são armazenados.",
+      message: "Pagamento com cartão registrado. Aguardando confirmação.",
     };
   },
 

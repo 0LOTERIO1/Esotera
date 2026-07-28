@@ -4,21 +4,20 @@ export const storeConfig = {
   tagline: "Autoconhecimento e espiritualidade através do tarô",
   description:
     "Loja especializada em tarôs e produtos esotéricos selecionados com cuidado.",
-  /** Contatos oficiais ainda não fornecidos — não exibir como dados reais na UI pública */
+  /** Contatos oficiais ainda não fornecidos — não exibir na UI pública */
   email: null as string | null,
   phone: null as string | null,
   whatsapp: null as string | null,
+  /** Origem operacional — uso interno de frete; não exibir na UI pública */
   address: {
-    street: "Ermelino Matarazzo",
+    street: "",
     city: "São Paulo",
     state: "SP",
-    cep: "08061-420",
+    cep: "",
   },
   social: {
     instagram: null as string | null,
     facebook: null as string | null,
     youtube: null as string | null,
   },
-  demoNotice:
-    "Ambiente de demonstração — nenhuma cobrança será realizada.",
 } as const;

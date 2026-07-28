@@ -1,0 +1,41 @@
+# Build context = backend/
+**/bin/
+**/obj/
+**/out/
+**/publish/
+**/publish-verify/
+**/.vs/
+**/.idea/
+**/.vscode/
+**/*.user
+**/*.suo
+**/*.userosscache
+**/*.[Dd]ot[Ss]ettings.user
+
+# Testes (não entram no publish da API)
+Esotera.Tests/
+
+# Ambiente e segredos locais
+.env
+.env.*
+!.env.example
+**/appsettings.*.local.json
+**/secrets.json
+**/Properties/launchSettings.json
+
+# Storage e artefatos locais
+storage/
+**/*.log
+**/*.tmp
+**/TestResults/
+**/coverage/
+
+# Docs / compose local (não necessários na imagem)
+docker-compose.yml
+README.md
+**/*.md
+
+# Git
+.git/
+.gitignore
+.dockerignore

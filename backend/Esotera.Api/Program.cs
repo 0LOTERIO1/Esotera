@@ -65,12 +65,14 @@ try
 
     builder.Services.AddAuthorization();
 
+    // Produção (Render): definir CORS_ALLOWED_ORIGINS=https://esotera.vercel.app
+    // (várias origens separadas por vírgula são aceitas; espaços são ignorados).
     var corsOrigins = builder.Configuration["CORS_ALLOWED_ORIGINS"] ?? "http://localhost:3000";
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            policy.WithOrigins(corsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            policy.WithOrigins(corsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 .AllowAnyMethod()
                 .AllowAnyHeader()
                 .AllowCredentials();

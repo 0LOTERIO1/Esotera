@@ -11,6 +11,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import {
   AddressForm,
   emptyAddressFormValues,
+  savedAddressToFormValues,
   toAddressInput,
   type AddressFormValues,
 } from "@/components/address/AddressForm";
@@ -53,6 +54,7 @@ export function CheckoutAddressStep({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(0);
 
@@ -179,21 +181,44 @@ export function CheckoutAddressStep({
   }
 
   function openCreateForm() {
+    setEditingId(null);
     setFormError(null);
     setFormKey((k) => k + 1);
     setFormOpen(true);
   }
 
-  async function handleCreate(values: AddressFormValues) {
+  function openEditForm(address: SavedAddress) {
+    setEditingId(address.id);
+    setFormError(null);
+    setFormKey((k) => k + 1);
+    setFormOpen(true);
+  }
+
+  function closeForm() {
+    setFormOpen(false);
+    setEditingId(null);
+    setFormError(null);
+  }
+
+  async function handleFormSubmit(values: AddressFormValues) {
     setFormError(null);
     try {
       const repo = getAddressRepository();
-      const created = await repo.create(toAddressInput(values));
+      const payload = toAddressInput(values);
+      let preferId: string | null = null;
+      if (editingId) {
+        const updated = await repo.update(editingId, payload);
+        preferId = updated.id;
+        push("success", "Endereço atualizado.");
+      } else {
+        const created = await repo.create(payload);
+        preferId = created.id;
+        push("success", "Endereço cadastrado.");
+      }
       const list = await repo.list();
       setAddresses(list);
-      resolveSelection(list, created.id);
-      setFormOpen(false);
-      push("success", "Endereço cadastrado.");
+      resolveSelection(list, preferId);
+      closeForm();
     } catch (err) {
       const message = errorMessage(err, "Não foi possível salvar o endereço.");
       if (err instanceof ApiError && err.status === 401) {
@@ -201,7 +226,7 @@ export function CheckoutAddressStep({
         return;
       }
       if (err instanceof ApiError && err.status === 403) {
-        setFormError("Acesso negado. Você não pode cadastrar endereço.");
+        setFormError("Acesso negado. Você não pode alterar este endereço.");
         return;
       }
       setFormError(message);
@@ -280,35 +305,49 @@ export function CheckoutAddressStep({
             const lines = formatAddressLines(address);
             const selected = selectedAddressId === address.id;
             return (
-              <label
+              <div
                 key={address.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 text-sm transition focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-esotera-primary ${
+                className={`rounded-md border p-4 text-sm transition ${
                   selected
                     ? "border-esotera-primary bg-esotera-primary/5"
                     : address.isPrimary
-                      ? "border-esotera-primary/30 hover:border-esotera-primary"
-                      : "border-esotera-border hover:border-esotera-muted"
+                      ? "border-esotera-primary/30"
+                      : "border-esotera-border"
                 }`}
               >
-                <input
-                  type="radio"
-                  name="checkout-address"
-                  value={address.id}
-                  checked={selected}
-                  onChange={() => selectAddress(address.id)}
-                  className="mt-1"
-                />
-                <span className="flex-1 text-esotera-muted">
-                  {address.isPrimary ? (
-                    <span className="mb-2 inline-block rounded bg-esotera-primary/15 px-2 py-0.5 text-xs font-medium text-esotera-primary">
-                      Principal
+                <label className="flex cursor-pointer items-start gap-3 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-esotera-primary">
+                  <input
+                    type="radio"
+                    name="checkout-address"
+                    value={address.id}
+                    checked={selected}
+                    onChange={() => selectAddress(address.id)}
+                    className="mt-1"
+                  />
+                  <span className="flex-1 text-esotera-muted">
+                    {address.isPrimary ? (
+                      <span className="mb-2 inline-block rounded bg-esotera-primary/15 px-2 py-0.5 text-xs font-medium text-esotera-primary">
+                        Principal
+                      </span>
+                    ) : null}
+                    <span className="block text-esotera-secondary">
+                      {lines.line1}
                     </span>
-                  ) : null}
-                  <span className="block text-esotera-secondary">{lines.line1}</span>
-                  <span className="block">{lines.line2}</span>
-                  <span className="block">{lines.line3}</span>
-                </span>
-              </label>
+                    <span className="block">{lines.line2}</span>
+                    <span className="block">{lines.line3}</span>
+                  </span>
+                </label>
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={formOpen}
+                    onClick={() => openEditForm(address)}
+                  >
+                    Editar / atualizar CEP
+                  </Button>
+                </div>
+              </div>
             );
           })}
         </fieldset>
@@ -317,20 +356,28 @@ export function CheckoutAddressStep({
       {formOpen ? (
         <AddressForm
           key={formKey}
-          title="Novo endereço de entrega"
-          initial={emptyAddressFormValues({
-            isPrimary: addresses.length === 0,
-          })}
+          title={
+            editingId ? "Editar endereço de entrega" : "Novo endereço de entrega"
+          }
+          initial={
+            editingId
+              ? (() => {
+                  const current = addresses.find((a) => a.id === editingId);
+                  return current
+                    ? savedAddressToFormValues(current)
+                    : emptyAddressFormValues();
+                })()
+              : emptyAddressFormValues({
+                  isPrimary: addresses.length === 0,
+                })
+          }
           requireCepTouch
           showPrimaryOption
-          submitLabel="Usar este endereço"
+          submitLabel={editingId ? "Salvar e usar" : "Usar este endereço"}
           idPrefix="chk-addr"
           formError={formError}
-          onCancel={() => {
-            setFormOpen(false);
-            setFormError(null);
-          }}
-          onSubmit={handleCreate}
+          onCancel={closeForm}
+          onSubmit={handleFormSubmit}
         />
       ) : null}
     </div>

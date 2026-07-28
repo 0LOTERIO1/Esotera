@@ -86,15 +86,6 @@ export default function RegisterPage() {
     });
   }, []);
 
-  const clearCepAutofill = useCallback(() => {
-    setForm((prev) => ({
-      ...prev,
-      street: "",
-      neighborhood: "",
-      city: "",
-    }));
-  }, []);
-
   const {
     status: cepStatus,
     message: cepMessage,
@@ -104,7 +95,6 @@ export default function RegisterPage() {
     cep: form.cep,
     enabled: cepTouched,
     onResolved: applyCepResult,
-    onNotFound: clearCepAutofill,
   });
 
   function validate(): boolean {
@@ -256,7 +246,7 @@ export default function RegisterPage() {
         </FormField>
         {lookingUp ? (
           <p className="sm:col-span-2 text-xs text-esotera-muted" role="status">
-            Consultando CEP…
+            Buscando CEP...
           </p>
         ) : null}
         {cepStatus === "ok" && cepMessage ? (
@@ -270,6 +260,7 @@ export default function RegisterPage() {
             className={inputClassName}
             value={form.street}
             onChange={(e) => set("street", e.target.value)}
+            disabled={lookingUp}
           />
         </FormField>
         <FormField label="Número" id="number" required error={errors.number}>
@@ -299,6 +290,7 @@ export default function RegisterPage() {
             className={inputClassName}
             value={form.neighborhood}
             onChange={(e) => set("neighborhood", e.target.value)}
+            disabled={lookingUp}
           />
         </FormField>
         <FormField label="Cidade" id="city" required error={errors.city}>
@@ -307,6 +299,7 @@ export default function RegisterPage() {
             className={inputClassName}
             value={form.city}
             onChange={(e) => set("city", e.target.value)}
+            disabled={lookingUp}
           />
         </FormField>
         <FormField label="Estado" id="state" required error={errors.state}>
@@ -315,6 +308,7 @@ export default function RegisterPage() {
             className={inputClassName}
             value={form.state}
             onChange={(e) => set("state", e.target.value)}
+            disabled={lookingUp}
           >
             {brazilianStates.map((s) => (
               <option key={s.uf} value={s.uf}>
@@ -361,7 +355,7 @@ export default function RegisterPage() {
 
         <div className="sm:col-span-2">
           <Button type="submit" className="w-full sm:w-auto" disabled={lookingUp}>
-            {lookingUp ? "Consultando CEP…" : "Criar conta"}
+            {lookingUp ? "Buscando CEP..." : "Criar conta"}
           </Button>
         </div>
       </form>

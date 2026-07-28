@@ -127,15 +127,6 @@ export function AddressForm({
     });
   }, []);
 
-  const clearCepAutofill = useCallback(() => {
-    setForm((prev) => ({
-      ...prev,
-      street: "",
-      neighborhood: "",
-      city: "",
-    }));
-  }, []);
-
   const {
     status: cepStatus,
     message: cepMessage,
@@ -145,7 +136,6 @@ export function AddressForm({
     cep: form.cep,
     enabled: cepTouched,
     onResolved: applyCepResult,
-    onNotFound: clearCepAutofill,
   });
 
   function setField<K extends keyof AddressFormValues>(
@@ -175,6 +165,7 @@ export function AddressForm({
 
   const id = (name: string) => `${idPrefix}-${name}`;
   const busy = submitting || lookingUp;
+  const addressFieldsLocked = lookingUp;
 
   return (
     <form
@@ -224,7 +215,7 @@ export function AddressForm({
         </FormField>
         {lookingUp ? (
           <p className="sm:col-span-2 text-xs text-esotera-muted" role="status">
-            Consultando CEP…
+            Buscando CEP...
           </p>
         ) : null}
         {cepStatus === "ok" && cepMessage ? (
@@ -243,7 +234,7 @@ export function AddressForm({
             className={inputClassName}
             value={form.state}
             onChange={(e) => setField("state", e.target.value.toUpperCase())}
-            disabled={submitting}
+            disabled={submitting || addressFieldsLocked}
           >
             {brazilianStates.map((s) => (
               <option key={s.uf} value={s.uf}>
@@ -265,7 +256,7 @@ export function AddressForm({
               value={form.street}
               onChange={(e) => setField("street", e.target.value)}
               autoComplete="address-line1"
-              disabled={submitting}
+              disabled={submitting || addressFieldsLocked}
             />
           </FormField>
         </div>
@@ -303,7 +294,7 @@ export function AddressForm({
             className={inputClassName}
             value={form.neighborhood}
             onChange={(e) => setField("neighborhood", e.target.value)}
-            disabled={submitting}
+            disabled={submitting || addressFieldsLocked}
           />
         </FormField>
         <FormField
@@ -318,7 +309,7 @@ export function AddressForm({
             value={form.city}
             onChange={(e) => setField("city", e.target.value)}
             autoComplete="address-level2"
-            disabled={submitting}
+            disabled={submitting || addressFieldsLocked}
           />
         </FormField>
       </div>
@@ -337,7 +328,11 @@ export function AddressForm({
 
       <div className="flex flex-wrap gap-2 pt-1">
         <Button type="submit" disabled={busy}>
-          {submitting ? "Salvando…" : lookingUp ? "Consultando CEP…" : submitLabel}
+          {submitting
+            ? "Salvando…"
+            : lookingUp
+              ? "Buscando CEP..."
+              : submitLabel}
         </Button>
         {onCancel ? (
           <Button

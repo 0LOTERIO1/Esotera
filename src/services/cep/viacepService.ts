@@ -9,14 +9,13 @@ type ViaCepResponse = {
   localidade?: string;
   uf?: string;
   ibge?: string;
-  erro?: boolean;
+  erro?: boolean | string;
 };
 
 /**
  * Campos de endereço preenchíveis pelo ViaCEP.
- * Mapeamento exato:
  * - logradouro → street
- * - bairro → neighborhood (nunca localidade/IBGE)
+ * - bairro → neighborhood
  * - localidade → city
  * - uf → state
  */
@@ -30,20 +29,23 @@ export type CepLookupResult = {
 export class CepLookupError extends Error {
   constructor(
     message: string,
-    public code: "invalid" | "not_found" | "network" | "unavailable",
+    public code: "invalid" | "not_found" | "network" | "unavailable" | "timeout",
   ) {
     super(message);
     this.name = "CepLookupError";
   }
 }
 
+const DEFAULT_TIMEOUT_MS = 8_000;
+
 /**
  * Consulta ViaCEP: GET https://viacep.com.br/ws/{cep}/json/
- * Serviço reutilizável — não duplicar a lógica nos formulários.
+ * Serviço único — formulários devem usar este helper via useCepAutofill.
  */
 export async function lookupCep(
   cep: string,
   signal?: AbortSignal,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<CepLookupResult> {
   const digits = onlyDigits(cep);
   if (!validateCep(digits)) {
@@ -53,33 +55,60 @@ export async function lookupCep(
     );
   }
 
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  const onOuterAbort = () => timeoutController.abort();
+  if (signal) {
+    if (signal.aborted) {
+      clearTimeout(timeoutId);
+      throw new DOMException("Aborted", "AbortError");
+    }
+    signal.addEventListener("abort", onOuterAbort, { once: true });
+  }
+
   let response: Response;
   try {
     response = await fetch(`https://viacep.com.br/ws/${digits}/json/`, {
       method: "GET",
-      signal,
+      signal: timeoutController.signal,
       headers: { Accept: "application/json" },
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw error;
+      if (signal?.aborted) throw error;
+      throw new CepLookupError(
+        "A consulta do CEP demorou demais. Tente novamente.",
+        "timeout",
+      );
     }
     throw new CepLookupError(
-      "Não foi possível consultar o CEP. Tente novamente.",
+      "Não foi possível consultar o CEP. Verifique sua conexão e tente novamente.",
       "network",
     );
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", onOuterAbort);
   }
 
   if (!response.ok) {
     throw new CepLookupError(
-      "Serviço de CEP indisponível no momento.",
+      "Serviço de CEP indisponível no momento. Tente novamente em instantes.",
       "unavailable",
     );
   }
 
-  const data = (await response.json()) as ViaCepResponse;
+  let data: ViaCepResponse;
+  try {
+    data = (await response.json()) as ViaCepResponse;
+  } catch {
+    throw new CepLookupError(
+      "Não foi possível interpretar a resposta do CEP. Tente novamente.",
+      "unavailable",
+    );
+  }
 
-  if (data.erro === true) {
+  if (data.erro === true || data.erro === "true") {
     throw new CepLookupError(
       "CEP não encontrado. Verifique o número informado.",
       "not_found",
@@ -87,12 +116,11 @@ export async function lookupCep(
   }
 
   const street = (data.logradouro ?? "").trim();
-  // Obrigatório: bairro vem SOMENTE de data.bairro — nunca de localidade/ibge
   const neighborhood = (data.bairro ?? "").trim();
   const city = (data.localidade ?? "").trim();
   const state = (data.uf ?? "").trim().toUpperCase();
 
-  if (!city || !state) {
+  if (!city || state.length !== 2) {
     throw new CepLookupError(
       "CEP não encontrado. Verifique o número informado.",
       "not_found",

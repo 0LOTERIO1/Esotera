@@ -6,6 +6,17 @@ import type { IAddressRepository } from "./IAddressRepository";
 
 type AddressBook = Record<string, SavedAddress[]>;
 
+function isFictionalDemoAddress(address: SavedAddress): boolean {
+  const street = address.street.trim().toLowerCase();
+  const neighborhood = address.neighborhood.trim().toLowerCase();
+  return (
+    street === "rua exemplo" ||
+    (neighborhood === "ermelino matarazzo" && street.includes("exemplo")) ||
+    (address.complement?.trim().toLowerCase() === "apto 12" &&
+      street === "rua exemplo")
+  );
+}
+
 /**
  * Endereços no localStorage (modo mock).
  * Sincroniza o endereço principal com authStore.user.address (checkout).
@@ -43,10 +54,29 @@ export class MockAddressRepository implements IAddressRepository {
   private ensureSeed(userId: string): SavedAddress[] {
     const book = this.readBook();
     const existing = book[userId];
-    if (existing?.length) return existing;
+
+    if (existing?.length) {
+      const cleaned = existing.filter((a) => !isFictionalDemoAddress(a));
+      if (cleaned.length !== existing.length) {
+        book[userId] = cleaned;
+        this.writeBook(book);
+        if (cleaned.length) this.syncPrimaryToProfile(cleaned);
+      }
+      return cleaned;
+    }
 
     const user = useAuthStore.getState().user;
-    if (!user || user.id !== userId || !user.address?.street) {
+    if (!user || user.id !== userId || !user.address?.street?.trim()) {
+      return [];
+    }
+
+    if (
+      isFictionalDemoAddress({
+        ...user.address,
+        id: "mock-primary",
+        isPrimary: true,
+      })
+    ) {
       return [];
     }
 

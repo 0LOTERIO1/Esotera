@@ -20,17 +20,17 @@ type UseCepAutofillOptions = {
   /** Quando false, não consulta (ex.: formulário fechado ou CEP ainda não alterado na edição) */
   enabled?: boolean;
   /**
-   * Chamado com o resultado do ViaCEP.
-   * street/neighborhood podem vir vazios — o usuário completa manualmente.
+   * Chamado somente com resposta válida do ViaCEP.
+   * Não limpa o formulário em caso de erro — o endereço atual permanece até sucesso.
    */
   onResolved: (result: CepLookupResult) => void;
-  /** Chamado quando o CEP não existe (ou falha definitiva de lookup) */
+  /** Chamado quando o CEP não existe (sem apagar campos automaticamente) */
   onNotFound?: () => void;
 };
 
 /**
  * Dispara consulta automática ao ViaCEP quando o CEP completa 8 dígitos.
- * Centraliza o fluxo para AddressSection, cadastro e futuros formulários.
+ * Reutilizado por AddressForm, cadastro e checkout.
  */
 export function useCepAutofill({
   cep,
@@ -42,7 +42,8 @@ export function useCepAutofill({
   const [message, setMessage] = useState<string | null>(null);
   const onResolvedRef = useRef(onResolved);
   const onNotFoundRef = useRef(onNotFound);
-  const lastQueriedRef = useRef<string | null>(null);
+  const lastSuccessRef = useRef<string | null>(null);
+  const lastNotFoundRef = useRef<string | null>(null);
 
   useEffect(() => {
     onResolvedRef.current = onResolved;
@@ -55,60 +56,72 @@ export function useCepAutofill({
     const digits = onlyDigits(cep);
 
     if (digits.length < 8) {
-      lastQueriedRef.current = null;
-      void Promise.resolve().then(() => {
+      lastSuccessRef.current = null;
+      lastNotFoundRef.current = null;
+      const idleTimer = window.setTimeout(() => {
         setStatus("idle");
         setMessage(null);
-      });
-      return;
+      }, 0);
+      return () => window.clearTimeout(idleTimer);
     }
 
     if (!validateCep(digits)) return;
-    if (lastQueriedRef.current === digits) return;
+
+    // Evita consultas repetidas para o mesmo CEP já resolvido ou inexistente
+    if (lastSuccessRef.current === digits || lastNotFoundRef.current === digits) {
+      return;
+    }
 
     const controller = new AbortController();
     let cancelled = false;
 
-    void Promise.resolve().then(async () => {
-      if (cancelled) return;
-      setStatus("loading");
-      setMessage(null);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (cancelled) return;
+        setStatus("loading");
+        setMessage("Buscando CEP...");
 
-      try {
-        const result = await lookupCep(digits, controller.signal);
-        if (cancelled) return;
-        lastQueriedRef.current = digits;
-        setStatus("ok");
-        setMessage(
-          result.neighborhood
-            ? null
-            : "Bairro não retornado para este CEP. Preencha manualmente.",
-        );
-        onResolvedRef.current(result);
-      } catch (error) {
-        if (cancelled) return;
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
+        try {
+          const result = await lookupCep(digits, controller.signal);
+          if (cancelled) return;
+          lastSuccessRef.current = digits;
+          lastNotFoundRef.current = null;
+          setStatus("ok");
+          setMessage(
+            result.neighborhood
+              ? null
+              : "Bairro não retornado para este CEP. Preencha manualmente.",
+          );
+          onResolvedRef.current(result);
+        } catch (error) {
+          if (cancelled) return;
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
+
+          if (error instanceof CepLookupError && error.code === "not_found") {
+            lastNotFoundRef.current = digits;
+            setStatus("not_found");
+            setMessage(error.message);
+            onNotFoundRef.current?.();
+            return;
+          }
+
+          // Rede/timeout/indisponível: não marca como consultado — permite nova tentativa
+          setStatus("error");
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível consultar o CEP. Tente novamente.",
+          );
         }
-        lastQueriedRef.current = digits;
-        if (error instanceof CepLookupError && error.code === "not_found") {
-          setStatus("not_found");
-          setMessage(error.message);
-          onNotFoundRef.current?.();
-          return;
-        }
-        setStatus("error");
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível consultar o CEP.",
-        );
-      }
-    });
+      })();
+    }, 0);
 
     return () => {
       cancelled = true;
       controller.abort();
+      window.clearTimeout(timer);
     };
   }, [cep, enabled]);
 
@@ -131,7 +144,8 @@ export function useCepAutofill({
   }
 
   function resetLookup() {
-    lastQueriedRef.current = null;
+    lastSuccessRef.current = null;
+    lastNotFoundRef.current = null;
     setStatus("idle");
     setMessage(null);
   }

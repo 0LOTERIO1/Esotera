@@ -23,7 +23,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             {
                 // Tokens fictícios apenas para IsConfigured nos testes — nunca credenciais reais.
                 ["MERCADO_PAGO_ACCESS_TOKEN"] = "test-access-token-for-unit-tests-only",
-                ["MERCADO_PAGO_ENVIRONMENT"] = "test",
+                ["MERCADO_PAGO_ENVIRONMENT"] = "Test",
+                ["MercadoPago__Environment"] = "Test",
+                ["MERCADO_PAGO_SANDBOX_PIX_ENABLED"] = "true",
+                ["MERCADO_PAGO_SANDBOX_PIX_AMOUNT"] = "50.00",
                 ["MERCADO_PAGO_WEBHOOK_SECRET"] = "test-webhook-secret",
                 ["PUBLIC_API_BASE_URL"] = "http://localhost"
             });

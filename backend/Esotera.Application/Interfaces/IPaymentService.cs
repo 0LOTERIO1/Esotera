@@ -4,6 +4,8 @@ namespace Esotera.Application.Interfaces;
 
 public interface IPaymentService
 {
+    PaymentEnvironmentConfigDto GetPublicConfig();
+
     Task<CreatePaymentResponse> CreateForOrderAsync(
         Guid userId,
         Guid orderId,
@@ -12,8 +14,18 @@ public interface IPaymentService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Pix oficial de teste R$ 50 em sandbox — não cria pedido comercial,
+    /// não consome cupom/estoque e não aparece como venda.
+    /// </summary>
+    Task<SandboxPixTestResponse> CreateSandboxPixTestAsync(
+        Guid userId,
+        string paymentIdempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Processa notificação do MP: valida assinatura (se configurada),
-    /// consulta o pagamento na API e atualiza o pedido de forma idempotente.
+    /// consulta a order na API e atualiza o pedido de forma idempotente.
+    /// Ignora orders de teste sandbox e IDs inexistentes.
     /// </summary>
     Task ProcessWebhookAsync(
         string? rawBody,

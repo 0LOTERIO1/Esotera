@@ -15,6 +15,26 @@ namespace Esotera.Infrastructure.Services;
 /// </summary>
 public class MercadoPagoHttpClient : IMercadoPagoClient
 {
+    private static readonly HashSet<string> RedactedJsonKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "qr_code",
+        "qr_code_base64",
+        "token",
+        "access_token",
+        "password",
+        "secret",
+        "authorization",
+        "card_number",
+        "security_code",
+        "cvv",
+        "identification",
+        "number",
+        "email",
+        "first_name",
+        "last_name",
+        "phone"
+    };
+
     private readonly HttpClient _http;
     private readonly MercadoPagoOptions _options;
     private readonly ILogger<MercadoPagoHttpClient> _logger;
@@ -49,9 +69,11 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         {
             ["type"] = "online",
             ["external_reference"] = command.ExternalReference,
-            ["description"] = command.Description,
             ["total_amount"] = amount,
-            ["payer"] = BuildPayer(command.PayerEmail, command.PayerCpf),
+            ["payer"] = BuildPayer(
+                command.PayerEmail,
+                command.PayerFirstName,
+                command.IsSandboxOfficialTest ? null : command.PayerCpf),
             ["transactions"] = new Dictionary<string, object?>
             {
                 ["payments"] = new object[]
@@ -69,6 +91,10 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             },
         };
 
+        // Contrato oficial do teste sandbox não envia description.
+        if (!command.IsSandboxOfficialTest && !string.IsNullOrWhiteSpace(command.Description))
+            body["description"] = command.Description;
+
         using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/orders")
         {
             Content = new StringContent(
@@ -82,19 +108,20 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            LogSafeApiError("CreateOrder", response, raw);
-            throw new ValidationException(
-                "payment",
-                "Não foi possível criar o pagamento Pix. Verifique os dados e tente novamente.");
+            var parsed = LogSafeApiError("CreateOrder", response, raw);
+            throw MapCreateOrderFailure(parsed);
         }
 
         var snapshot = ParseOrder(raw);
         _logger.LogInformation(
-            "Mercado Pago order criada: OrderId={OrderId} PaymentId={PaymentId} Status={Status} StatusDetail={StatusDetail}",
+            "Mercado Pago order criada: OrderId={OrderId} PaymentId={PaymentId} Status={Status} StatusDetail={StatusDetail} ExternalReferencePrefix={ExternalReferencePrefix}",
             snapshot.OrderId,
             snapshot.TransactionPaymentId ?? "(ausente)",
             snapshot.Status,
-            snapshot.StatusDetail);
+            snapshot.StatusDetail,
+            snapshot.ExternalReference.Length >= 24
+                ? snapshot.ExternalReference[..24]
+                : snapshot.ExternalReference);
         return snapshot;
     }
 
@@ -121,6 +148,21 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         return ParseOrder(raw);
     }
 
+    private ValidationException MapCreateOrderFailure(SafeMpErrorParsed parsed)
+    {
+        var code = (parsed.Code ?? parsed.Error ?? "").Trim().ToLowerInvariant();
+        if (code.Contains("invalid_email_for_sandbox", StringComparison.Ordinal)
+            || (parsed.Message?.Contains("invalid_email_for_sandbox", StringComparison.OrdinalIgnoreCase) ?? false)
+            || (parsed.Message?.Contains("@testuser.com", StringComparison.OrdinalIgnoreCase) ?? false))
+        {
+            return new ValidationException("payment", MercadoPagoOptions.CommercialSandboxBlockedMessage);
+        }
+
+        return new ValidationException(
+            "payment",
+            "Não foi possível criar o pagamento Pix. Verifique os dados e tente novamente.");
+    }
+
     private void ApplyAuth(HttpRequestMessage request, string? idempotencyKey)
     {
         var accessToken = (_options.AccessToken ?? string.Empty).Trim();
@@ -137,92 +179,176 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
                 "Pagamento ainda não está configurado no servidor.");
     }
 
+    private sealed record SafeMpErrorParsed(
+        int HttpStatus,
+        string? Error,
+        string? Code,
+        string? Message,
+        string? ResponseStatus,
+        string Causes,
+        string RequestId,
+        string SanitizedBody);
+
     /// <summary>
-    /// Log seguro de erro da API MP — sem Access Token, body da request, CPF, e-mail ou payload bruto.
+    /// Lê o corpo real da resposta e registra apenas metadados seguros.
     /// </summary>
-    private void LogSafeApiError(string operation, HttpResponseMessage response, string rawBody)
+    private SafeMpErrorParsed LogSafeApiError(string operation, HttpResponseMessage response, string rawBody)
     {
         var httpStatus = (int)response.StatusCode;
-        var wwwAuthenticate = response.Headers.WwwAuthenticate.Count > 0
-            ? string.Join("; ", response.Headers.WwwAuthenticate.Select(v => v.ToString()))
-            : "(ausente)";
         var requestId = "(ausente)";
         if (response.Headers.TryGetValues("x-request-id", out var reqIds))
             requestId = reqIds.FirstOrDefault() ?? "(ausente)";
 
-        string error = "(ausente)";
-        string message = "(ausente)";
-        string responseStatus = "(ausente)";
-        string causes = "(ausente)";
+        string? error = null;
+        string? code = null;
+        string? message = null;
+        string? responseStatus = null;
+        var causes = "(ausente)";
+        var sanitized = "(corpo vazio)";
 
-        if (string.IsNullOrWhiteSpace(rawBody))
+        if (!string.IsNullOrWhiteSpace(rawBody))
         {
-            _logger.LogWarning(
-                "MercadoPago erro seguro ({Operation}):\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=corpo vazio",
-                operation,
-                httpStatus,
-                error,
-                message,
-                responseStatus,
-                causes,
-                wwwAuthenticate,
-                requestId);
+            try
+            {
+                using var doc = JsonDocument.Parse(rawBody);
+                var root = doc.RootElement;
+                sanitized = SanitizeJsonElement(root);
+
+                if (root.TryGetProperty("error", out var errorEl))
+                    error = ReadStringish(errorEl);
+                if (root.TryGetProperty("code", out var codeEl))
+                    code = ReadStringish(codeEl);
+                if (root.TryGetProperty("message", out var messageEl))
+                    message = ReadStringish(messageEl);
+                if (root.TryGetProperty("status", out var statusEl))
+                    responseStatus = ReadStringish(statusEl);
+
+                var causeParts = new List<string>();
+                if (root.TryGetProperty("cause", out var causeEl)
+                    && causeEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in causeEl.EnumerateArray())
+                        AppendCause(causeParts, item);
+                }
+
+                if (root.TryGetProperty("errors", out var errorsEl)
+                    && errorsEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in errorsEl.EnumerateArray())
+                        AppendCause(causeParts, item);
+                }
+
+                if (causeParts.Count > 0)
+                    causes = string.Join(" | ", causeParts);
+
+                // Orders API frequentemente usa só "code" no lugar de "error".
+                error ??= code;
+            }
+            catch (JsonException)
+            {
+                sanitized = "(nao foi possivel interpretar a resposta; conteudo bruto nao registrado)";
+            }
+        }
+
+        _logger.LogWarning(
+            "MercadoPago erro seguro ({Operation}):\nHttpStatus={HttpStatus}\nError={Error}\nCode={Code}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nRequestId={RequestId}\nSanitizedBody={SanitizedBody}",
+            operation,
+            httpStatus,
+            error ?? "(ausente)",
+            code ?? "(ausente)",
+            message ?? "(ausente)",
+            responseStatus ?? "(ausente)",
+            causes,
+            requestId,
+            sanitized);
+
+        return new SafeMpErrorParsed(
+            httpStatus,
+            error,
+            code,
+            message,
+            responseStatus,
+            causes,
+            requestId,
+            sanitized);
+    }
+
+    private static void AppendCause(List<string> parts, JsonElement item)
+    {
+        if (item.ValueKind == JsonValueKind.String)
+        {
+            parts.Add(item.GetString() ?? "?");
             return;
         }
 
-        try
+        if (item.ValueKind != JsonValueKind.Object)
+            return;
+
+        string? c = null;
+        string? d = null;
+        if (item.TryGetProperty("code", out var codeEl))
+            c = ReadStringish(codeEl);
+        if (item.TryGetProperty("description", out var descEl))
+            d = descEl.GetString();
+        if (d is null && item.TryGetProperty("message", out var msgEl))
+            d = msgEl.GetString();
+        if (!string.IsNullOrWhiteSpace(c) || !string.IsNullOrWhiteSpace(d))
+            parts.Add($"{c ?? "?"}:{d ?? "?"}");
+    }
+
+    private static string SanitizeJsonElement(JsonElement el)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+            WriteSanitized(writer, el, propertyName: null);
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static void WriteSanitized(Utf8JsonWriter writer, JsonElement el, string? propertyName)
+    {
+        if (propertyName is not null && RedactedJsonKeys.Contains(propertyName))
         {
-            using var doc = JsonDocument.Parse(rawBody);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("error", out var errorEl))
-                error = ReadStringish(errorEl);
-            if (root.TryGetProperty("message", out var messageEl))
-                message = ReadStringish(messageEl);
-            if (root.TryGetProperty("status", out var statusEl))
-                responseStatus = ReadStringish(statusEl);
-
-            if (root.TryGetProperty("cause", out var causeEl)
-                && causeEl.ValueKind == JsonValueKind.Array)
-            {
-                var parts = new List<string>();
-                foreach (var item in causeEl.EnumerateArray())
-                {
-                    if (item.ValueKind != JsonValueKind.Object) continue;
-                    string? code = null;
-                    string? description = null;
-                    if (item.TryGetProperty("code", out var codeEl))
-                        code = ReadStringish(codeEl);
-                    if (item.TryGetProperty("description", out var descEl))
-                        description = descEl.GetString();
-                    if (description is null && item.TryGetProperty("message", out var causeMsg))
-                        description = causeMsg.GetString();
-                    if (!string.IsNullOrWhiteSpace(code) || !string.IsNullOrWhiteSpace(description))
-                        parts.Add($"{code ?? "?"}:{description ?? "?"}");
-                }
-
-                causes = parts.Count > 0 ? string.Join(" | ", parts) : "(vazio)";
-            }
-
-            _logger.LogWarning(
-                "MercadoPago erro seguro ({Operation}):\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}",
-                operation,
-                httpStatus,
-                error,
-                message,
-                responseStatus,
-                causes,
-                wwwAuthenticate,
-                requestId);
+            writer.WriteString(propertyName, "[REDACTED]");
+            return;
         }
-        catch (JsonException)
+
+        switch (el.ValueKind)
         {
-            _logger.LogWarning(
-                "MercadoPago erro seguro ({Operation}):\nHttpStatus={HttpStatus}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=nao foi possivel interpretar a resposta (conteudo bruto nao registrado)",
-                operation,
-                httpStatus,
-                wwwAuthenticate,
-                requestId);
+            case JsonValueKind.Object:
+                if (propertyName is null) writer.WriteStartObject();
+                else writer.WriteStartObject(propertyName);
+                foreach (var prop in el.EnumerateObject())
+                    WriteSanitized(writer, prop.Value, prop.Name);
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                if (propertyName is null) writer.WriteStartArray();
+                else writer.WriteStartArray(propertyName);
+                foreach (var item in el.EnumerateArray())
+                    WriteSanitized(writer, item, propertyName: null);
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.String:
+                if (propertyName is null) writer.WriteStringValue(el.GetString());
+                else writer.WriteString(propertyName, el.GetString());
+                break;
+            case JsonValueKind.Number:
+                if (propertyName is null) writer.WriteRawValue(el.GetRawText());
+                else { writer.WritePropertyName(propertyName); writer.WriteRawValue(el.GetRawText()); }
+                break;
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                if (propertyName is null) writer.WriteBooleanValue(el.GetBoolean());
+                else writer.WriteBoolean(propertyName, el.GetBoolean());
+                break;
+            case JsonValueKind.Null:
+                if (propertyName is null) writer.WriteNullValue();
+                else writer.WriteNull(propertyName);
+                break;
+            default:
+                if (propertyName is null) writer.WriteStringValue(el.ToString());
+                else writer.WriteString(propertyName, el.ToString());
+                break;
         }
     }
 
@@ -239,17 +365,36 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
     private static string FormatAmount(decimal amount) =>
         amount.ToString("0.00", CultureInfo.InvariantCulture);
 
-    private static object BuildPayer(string email, string? cpf)
+    private static object BuildPayer(string email, string? firstName, string? cpf)
     {
-        if (string.IsNullOrWhiteSpace(cpf))
-            return new { email };
+        var hasName = !string.IsNullOrWhiteSpace(firstName);
+        var hasCpf = !string.IsNullOrWhiteSpace(cpf);
 
-        var digits = new string(cpf.Where(char.IsDigit).ToArray());
-        return new
+        if (hasName && hasCpf)
         {
-            email,
-            identification = new { type = "CPF", number = digits }
-        };
+            var digits = new string(cpf!.Where(char.IsDigit).ToArray());
+            return new
+            {
+                email,
+                first_name = firstName!.Trim(),
+                identification = new { type = "CPF", number = digits }
+            };
+        }
+
+        if (hasName)
+            return new { email, first_name = firstName!.Trim() };
+
+        if (hasCpf)
+        {
+            var digits = new string(cpf!.Where(char.IsDigit).ToArray());
+            return new
+            {
+                email,
+                identification = new { type = "CPF", number = digits }
+            };
+        }
+
+        return new { email };
     }
 
     private static MercadoPagoPaymentSnapshot ParseOrder(string raw)
@@ -325,7 +470,6 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
                         ticketUrl = tu.GetString();
                 }
 
-                // Usa o primeiro payment da order.
                 break;
             }
         }

@@ -49,6 +49,9 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
         var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         order!.Status.Should().Be("awaiting_payment");
 
+        // Em Test, checkout comercial só aceita o valor oficial de sandbox (não altera a API).
+        await TestHelpers.ForceOrderTotalAsync(_factory.Services, order.Id, 50.00m);
+
         using var payReq = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{order.Id}/payments")
         {
             Content = JsonContent.Create(new CreatePaymentRequest(
@@ -71,7 +74,7 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
         payment.MercadoPagoOrderId.Should().StartWith("ORD");
         payment.MercadoPagoPaymentId.Should().StartWith("PAY");
         payment.Message.Should().Contain("Aguardando pagamento");
-        payment.Amount.Should().Be(order.Total);
+        payment.Amount.Should().Be(50.00m);
     }
 
     [Fact]
@@ -135,8 +138,9 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
             null);
         var orderRes = await TestHelpers.PostOrderAsync(_client, orderReq);
         var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+        await TestHelpers.ForceOrderTotalAsync(_factory.Services, order!.Id, 50.00m);
 
-        using var payReq = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{order!.Id}/payments")
+        using var payReq = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{order.Id}/payments")
         {
             Content = JsonContent.Create(new CreatePaymentRequest(null, "pix", null, null, null))
         };
@@ -151,7 +155,7 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
             fake.SetStatus(
                 payment!.MercadoPagoOrderId!,
                 "processed",
-                order.Total,
+                50.00m,
                 order.Id.ToString("D"),
                 payment.MercadoPagoPaymentId,
                 "accredited");

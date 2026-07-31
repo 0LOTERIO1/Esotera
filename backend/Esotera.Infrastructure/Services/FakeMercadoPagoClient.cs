@@ -1,4 +1,5 @@
 using Esotera.Application.Interfaces;
+using Esotera.Application.Options;
 
 namespace Esotera.Infrastructure.Services;
 
@@ -14,6 +15,9 @@ public class FakeMercadoPagoClient : IMercadoPagoClient
     public string LastIdempotencyKey { get; private set; } = "";
     public List<MercadoPagoCreatePaymentCommand> Created { get; } = new();
 
+    /// <summary>Quando true, CreatePaymentAsync lança ValidationException simulando invalid_email_for_sandbox.</summary>
+    public bool FailNextCreateWithSandboxEmailError { get; set; }
+
     public Task<MercadoPagoPaymentSnapshot> CreatePaymentAsync(
         MercadoPagoCreatePaymentCommand command,
         string idempotencyKey,
@@ -25,6 +29,14 @@ public class FakeMercadoPagoClient : IMercadoPagoClient
         var method = (command.PaymentMethodId ?? "").Trim().ToLowerInvariant();
         if (method is not "pix")
             throw new InvalidOperationException("Fake MP: somente Pix nesta fase.");
+
+        if (FailNextCreateWithSandboxEmailError)
+        {
+            FailNextCreateWithSandboxEmailError = false;
+            throw new Application.Exceptions.ValidationException(
+                "payment",
+                MercadoPagoOptions.CommercialSandboxBlockedMessage);
+        }
 
         var n = ++_seq;
         var orderId = $"ORDFAKE{n:D20}";
@@ -55,20 +67,7 @@ public class FakeMercadoPagoClient : IMercadoPagoClient
         if (_byOrderId.TryGetValue(orderId, out var snap))
             return Task.FromResult(snap);
 
-        var pending = new MercadoPagoPaymentSnapshot(
-            orderId,
-            null,
-            "processed",
-            "accredited",
-            0m,
-            "BRL",
-            "",
-            "pix",
-            null,
-            null,
-            null,
-            null);
-        return Task.FromResult(pending);
+        throw new Application.Exceptions.NotFoundException("Order Mercado Pago", orderId);
     }
 
     public void Seed(MercadoPagoPaymentSnapshot snapshot) =>

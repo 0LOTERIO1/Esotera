@@ -61,10 +61,12 @@ public static class DependencyInjection
                 options.WebhookSecret,
                 configuration["MERCADO_PAGO_WEBHOOK_SECRET"],
                 configuration["MercadoPago:WebhookSecret"]);
+            // Variáveis de ambiente têm precedência sobre appsettings (ex.: Test → Production no Render).
             options.Environment = FirstNonEmpty(
-                options.Environment,
                 configuration["MERCADO_PAGO_ENVIRONMENT"],
-                configuration["MercadoPago:Environment"]) ?? "test";
+                configuration["MercadoPago:Environment"],
+                options.Environment) ?? "Test";
+            options.EnvironmentKind = MercadoPagoOptions.ParseEnvironmentKind(options.Environment);
             options.NotificationUrl = FirstNonEmpty(
                 options.NotificationUrl,
                 configuration["MERCADO_PAGO_NOTIFICATION_URL"],
@@ -73,6 +75,30 @@ public static class DependencyInjection
                 options.PublicApiBaseUrl,
                 configuration["PUBLIC_API_BASE_URL"],
                 configuration["MercadoPago:PublicApiBaseUrl"]);
+
+            var sandboxEnabledRaw = FirstNonEmpty(
+                configuration["MERCADO_PAGO_SANDBOX_PIX_ENABLED"],
+                configuration["MercadoPago:SandboxPixEnabled"]);
+            var sandboxEnabled = ParseBool(sandboxEnabledRaw);
+            if (sandboxEnabled.HasValue)
+                options.SandboxPixEnabled = sandboxEnabled.Value;
+
+            var amountRaw = FirstNonEmpty(
+                configuration["MERCADO_PAGO_SANDBOX_PIX_AMOUNT"],
+                configuration["MercadoPago:SandboxPixAmount"]);
+            if (decimal.TryParse(
+                    amountRaw,
+                    System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var sandboxAmount)
+                && sandboxAmount > 0)
+            {
+                options.SandboxPixAmount = sandboxAmount;
+            }
+
+            // Produção nunca habilita o fluxo isolado de teste.
+            if (options.IsProductionEnvironment)
+                options.SandboxPixEnabled = false;
         });
 
         services.AddSingleton<IClock, SystemClock>();

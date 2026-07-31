@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Esotera.Application.DTOs.Auth;
 using Esotera.Application.DTOs.Orders;
+using Esotera.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Esotera.Tests;
 
@@ -75,5 +77,23 @@ public static class TestHelpers
             idempotencyKey ?? Guid.NewGuid().ToString());
 
         return await client.SendAsync(message);
+    }
+
+    /// <summary>
+    /// Ajusta o total do pedido no banco de teste sem alterar a API comercial
+    /// (ex.: alinhar ao valor oficial de sandbox R$ 50,00).
+    /// </summary>
+    public static async Task ForceOrderTotalAsync(
+        IServiceProvider services,
+        Guid orderId,
+        decimal total)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
+        var entity = await db.Orders.FindAsync(orderId)
+            ?? throw new InvalidOperationException($"Pedido {orderId} não encontrado.");
+        entity.Total = total;
+        entity.Subtotal = total;
+        await db.SaveChangesAsync();
     }
 }

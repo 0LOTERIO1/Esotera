@@ -5,15 +5,17 @@ namespace Esotera.Application.Interfaces;
 /// </summary>
 public record MercadoPagoCreatePaymentCommand(
     decimal TransactionAmount,
-    string Description,
+    string? Description,
     string ExternalReference,
     string PayerEmail,
+    string? PayerFirstName,
     string? PayerCpf,
     string PaymentMethodId,
     string? Token,
     int Installments,
     string? IssuerId,
-    string? NotificationUrl
+    string? NotificationUrl,
+    bool IsSandboxOfficialTest = false
 );
 
 /// <summary>

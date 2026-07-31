@@ -22,37 +22,3 @@ public class EmailOptions
         && !string.IsNullOrWhiteSpace(SmtpPassword)
         && !string.IsNullOrWhiteSpace(FromAddress);
 }
-
-public class MercadoPagoOptions
-{
-    public const string SectionName = "MercadoPago";
-
-    /// <summary>Access Token — SOMENTE backend. Nunca NEXT_PUBLIC_.</summary>
-    public string? AccessToken { get; set; }
-
-    /// <summary>
-    /// Nome da chave de configuração da qual <see cref="AccessToken"/> foi obtido
-    /// (diagnóstico temporário; nunca contém o valor do token).
-    /// </summary>
-    public string? AccessTokenSource { get; set; }
-
-    public string? WebhookSecret { get; set; }
-    /// <summary>test | production</summary>
-    public string Environment { get; set; } = "test";
-    /// <summary>URL pública do webhook (ex.: https://esotera-api.onrender.com/api/webhooks/mercadopago).</summary>
-    public string? NotificationUrl { get; set; }
-    /// <summary>Base da API pública para montar notification_url se NotificationUrl vazio.</summary>
-    public string? PublicApiBaseUrl { get; set; }
-
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(AccessToken);
-
-    public string ResolveNotificationUrl()
-    {
-        if (!string.IsNullOrWhiteSpace(NotificationUrl))
-            return NotificationUrl.Trim();
-        var baseUrl = (PublicApiBaseUrl ?? "").Trim().TrimEnd('/');
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            return string.Empty;
-        return $"{baseUrl}/api/webhooks/mercadopago";
-    }
-}

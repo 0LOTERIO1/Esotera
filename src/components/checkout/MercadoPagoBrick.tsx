@@ -13,8 +13,12 @@ type MercadoPagoBrickProps = {
   orderId: string;
   amount: number;
   payerEmail?: string;
+  isTestEnvironment?: boolean;
   onPaid?: () => void;
-  onPending?: (info: { qrCode?: string | null; qrCodeBase64?: string | null }) => void;
+  onPending?: (info: {
+    qrCode?: string | null;
+    qrCodeBase64?: string | null;
+  }) => void;
 };
 
 /**
@@ -25,11 +29,13 @@ export function MercadoPagoBrick({
   orderId,
   amount,
   payerEmail,
+  isTestEnvironment = false,
   onPaid,
   onPending,
 }: MercadoPagoBrickProps) {
   const push = useToastStore((s) => s.push);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const publicKey = getMercadoPagoPublicKey();
 
   const ready = useMemo(() => {
@@ -47,7 +53,6 @@ export function MercadoPagoBrick({
       paymentMethods: {
         maxInstallments: 1,
         minInstallments: 1,
-        // Fase 1: somente Pix.
         creditCard: "none" as const,
         debitCard: "none" as const,
         ticket: "none" as const,
@@ -58,11 +63,19 @@ export function MercadoPagoBrick({
   );
 
   const handleSubmit = useCallback(
-    async (param: { formData?: Record<string, unknown> } & Record<string, unknown>) => {
+    async (
+      param: { formData?: Record<string, unknown> } & Record<string, unknown>,
+    ) => {
+      if (submitting) {
+        throw new Error("Pagamento em andamento. Aguarde.");
+      }
+      setSubmitting(true);
       setSubmitError(null);
       const formData = (param.formData ?? param) as Record<string, unknown>;
       try {
-        const paymentMethodId = String(formData.payment_method_id ?? "").toLowerCase();
+        const paymentMethodId = String(
+          formData.payment_method_id ?? "",
+        ).toLowerCase();
         if (paymentMethodId !== "pix") {
           const message =
             "Nesta fase somente Pix está disponível. Cartão e boleto em breve.";
@@ -111,9 +124,11 @@ export function MercadoPagoBrick({
         setSubmitError(message);
         push("error", message);
         throw err;
+      } finally {
+        setSubmitting(false);
       }
     },
-    [orderId, onPaid, onPending, payerEmail, push],
+    [orderId, onPaid, onPending, payerEmail, push, submitting],
   );
 
   if (!ready) {
@@ -127,12 +142,19 @@ export function MercadoPagoBrick({
   return (
     <div className="space-y-3">
       <p className="text-sm text-esotera-muted">
-        Total a pagar:{" "}
+        Total do pedido:{" "}
         <span className="font-medium text-esotera-text">
           {formatCurrency(amount)}
         </span>
-        . Nesta fase o pagamento é somente via Pix.
+        . Nesta fase o pagamento comercial é somente via Pix.
       </p>
+      {isTestEnvironment ? (
+        <p className="text-sm text-esotera-muted">
+          Em sandbox, o Mercado Pago só aceita o valor oficial de teste (R$
+          50,00) no checkout comercial. Para outros totais, use o Pix de teste
+          isolado acima.
+        </p>
+      ) : null}
       <ul className="text-sm text-esotera-muted">
         <li>Pix — disponível</li>
         <li>Cartão — Em breve</li>
@@ -143,14 +165,16 @@ export function MercadoPagoBrick({
           {submitError}
         </p>
       ) : null}
-      <Payment
-        initialization={{
-          amount,
-          payer: payerEmail ? { email: payerEmail } : undefined,
-        }}
-        customization={customization}
-        onSubmit={handleSubmit as never}
-      />
+      <div className={submitting ? "pointer-events-none opacity-60" : undefined}>
+        <Payment
+          initialization={{
+            amount,
+            payer: payerEmail ? { email: payerEmail } : undefined,
+          }}
+          customization={customization}
+          onSubmit={handleSubmit as never}
+        />
+      </div>
     </div>
   );
 }

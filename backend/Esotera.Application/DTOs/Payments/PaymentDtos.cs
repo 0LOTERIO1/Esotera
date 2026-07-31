@@ -27,6 +27,31 @@ public record CreatePaymentResponse(
     string Message
 );
 
+/// <summary>Config pública do MP (sem secrets).</summary>
+public record PaymentEnvironmentConfigDto(
+    string Environment,
+    bool SandboxPixEnabled,
+    decimal SandboxPixAmount,
+    bool CommercialCheckoutAllowedInTest
+);
+
+/// <summary>Resultado do Pix de teste isolado (não é pedido comercial).</summary>
+public record SandboxPixTestResponse(
+    string MercadoPagoOrderId,
+    string? MercadoPagoPaymentId,
+    decimal Amount,
+    string Currency,
+    string Status,
+    string StatusDetail,
+    string ExternalReference,
+    string? TicketUrl,
+    string? QrCode,
+    string? QrCodeBase64,
+    string? DateOfExpiration,
+    string Message,
+    bool IsSandboxTest
+);
+
 public record MercadoPagoWebhookRequest(
     string? Action,
     string? Type,

@@ -32,6 +32,13 @@ public class PaymentService : IPaymentService
         _logger = logger;
     }
 
+    public PaymentEnvironmentConfigDto GetPublicConfig() =>
+        new(
+            _options.EnvironmentKind.ToString(),
+            _options.CanUseSandboxPixTest,
+            _options.SandboxPixAmount,
+            CommercialCheckoutAllowedInCurrentEnvironment());
+
     public async Task<CreatePaymentResponse> CreateForOrderAsync(
         Guid userId,
         Guid orderId,
@@ -60,7 +67,6 @@ public class PaymentService : IPaymentService
         if (string.IsNullOrWhiteSpace(methodId))
             throw new ValidationException("paymentMethodId", "Informe o método de pagamento.");
 
-        // Fase 1 Orders API: somente Pix.
         if (methodId is not "pix")
         {
             throw new ValidationException(
@@ -68,7 +74,14 @@ public class PaymentService : IPaymentService
                 "Nesta fase somente Pix está disponível. Cartão e boleto em breve.");
         }
 
-        // Replay idempotente da mesma order MP
+        // Em Test, só permite checkout comercial se o total coincidir com o valor oficial de teste.
+        // Nunca altera silenciosamente o total do pedido.
+        if (_options.IsTestEnvironment
+            && Math.Abs(order.Total - _options.SandboxPixAmount) > AmountTolerance)
+        {
+            throw new ValidationException("payment", MercadoPagoOptions.CommercialSandboxBlockedMessage);
+        }
+
         if (!string.IsNullOrWhiteSpace(order.PaymentIdempotencyKey)
             && string.Equals(order.PaymentIdempotencyKey, key, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(order.MercadoPagoOrderId))
@@ -88,20 +101,24 @@ public class PaymentService : IPaymentService
             order.PaymentMethod = PaymentMethod.Pix;
         order.PaymentInstallments = null;
 
+        var (payerEmail, payerFirstName, payerCpf) = ResolvePayerForEnvironment(order, request);
+
         var snapshot = await _mp.CreatePaymentAsync(
             new MercadoPagoCreatePaymentCommand(
                 TransactionAmount: order.Total,
-                Description: $"Pedido Esotera {order.OrderNumber}",
+                Description: _options.IsTestEnvironment
+                    ? null
+                    : $"Pedido Esotera {order.OrderNumber}",
                 ExternalReference: order.Id.ToString("D"),
-                PayerEmail: string.IsNullOrWhiteSpace(request.PayerEmail)
-                    ? order.CustomerEmail
-                    : request.PayerEmail.Trim(),
-                PayerCpf: order.CustomerCpf,
+                PayerEmail: payerEmail,
+                PayerFirstName: payerFirstName,
+                PayerCpf: payerCpf,
                 PaymentMethodId: "pix",
                 Token: null,
                 Installments: 1,
                 IssuerId: null,
-                NotificationUrl: _options.ResolveNotificationUrl()),
+                NotificationUrl: _options.ResolveNotificationUrl(),
+                IsSandboxOfficialTest: false),
             key,
             cancellationToken);
 
@@ -122,6 +139,70 @@ public class PaymentService : IPaymentService
 
         await _context.SaveChangesAsync(cancellationToken);
         return MapResponse(order, snapshot);
+    }
+
+    public async Task<SandboxPixTestResponse> CreateSandboxPixTestAsync(
+        Guid userId,
+        string paymentIdempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (_options.IsProductionEnvironment || !_options.CanUseSandboxPixTest)
+        {
+            throw new ForbiddenException(
+                "O teste Pix controlado só está disponível em ambiente Mercado Pago Test.");
+        }
+
+        if (!_options.IsConfigured)
+            throw new ValidationException(
+                "payment",
+                "Pagamento ainda não está configurado. Defina MERCADO_PAGO_ACCESS_TOKEN no servidor.");
+
+        var key = paymentIdempotencyKey.Trim();
+        if (key.Length is < 8 or > 64)
+            throw new ValidationException("idempotencyKey", "Idempotency-Key de pagamento inválida.");
+
+        var externalReference =
+            $"{MercadoPagoOptions.SandboxExternalReferencePrefix}{Guid.NewGuid():N}";
+        if (externalReference.Length > 64)
+            externalReference = externalReference[..64];
+
+        var snapshot = await _mp.CreatePaymentAsync(
+            new MercadoPagoCreatePaymentCommand(
+                TransactionAmount: _options.SandboxPixAmount,
+                Description: null,
+                ExternalReference: externalReference,
+                PayerEmail: MercadoPagoOptions.SandboxPayerEmail,
+                PayerFirstName: MercadoPagoOptions.SandboxPayerFirstName,
+                PayerCpf: null,
+                PaymentMethodId: "pix",
+                Token: null,
+                Installments: 1,
+                IssuerId: null,
+                NotificationUrl: _options.ResolveNotificationUrl(),
+                IsSandboxOfficialTest: true),
+            key,
+            cancellationToken);
+
+        _logger.LogInformation(
+            "Sandbox Pix teste gerado (sem pedido comercial). UserId={UserId} OrderId={OrderId} Amount={Amount}",
+            userId,
+            snapshot.OrderId,
+            snapshot.TransactionAmount);
+
+        return new SandboxPixTestResponse(
+            snapshot.OrderId,
+            snapshot.TransactionPaymentId,
+            snapshot.TransactionAmount,
+            Brl,
+            snapshot.Status,
+            snapshot.StatusDetail,
+            snapshot.ExternalReference,
+            snapshot.TicketUrl,
+            snapshot.QrCode,
+            snapshot.QrCodeBase64,
+            snapshot.DateOfExpiration,
+            "Ambiente de teste — nenhuma cobrança real será realizada. Pix de teste de R$ 50,00 gerado.",
+            IsSandboxTest: true);
     }
 
     public async Task ProcessWebhookAsync(
@@ -156,8 +237,26 @@ public class PaymentService : IPaymentService
             return;
         }
 
-        // Orders API: data.id é o ID da order (ORD…).
-        var mpOrder = await _mp.GetOrderAsync(dataId, cancellationToken);
+        MercadoPagoPaymentSnapshot mpOrder;
+        try
+        {
+            mpOrder = await _mp.GetOrderAsync(dataId, cancellationToken);
+        }
+        catch (NotFoundException)
+        {
+            _logger.LogInformation(
+                "Webhook MP: order {DataId} inexistente (notificação simulada ou ID inválido) — ignorada.",
+                dataId);
+            return;
+        }
+
+        if (_options.IsSandboxTestExternalReference(mpOrder.ExternalReference))
+        {
+            _logger.LogInformation(
+                "Webhook MP: order de teste sandbox {OrderId} ignorada (não atualiza pedido comercial).",
+                mpOrder.OrderId);
+            return;
+        }
 
         if (!Guid.TryParse(mpOrder.ExternalReference, out var orderId))
         {
@@ -175,16 +274,28 @@ public class PaymentService : IPaymentService
             return;
         }
 
+        // Não associa order de valor incompatível (ex.: teste R$50 em pedido comercial diferente).
+        if (mpOrder.TransactionAmount > 0
+            && Math.Abs(mpOrder.TransactionAmount - order.Total) > AmountTolerance)
+        {
+            _logger.LogWarning(
+                "Webhook MP: valor da order incompatível com pedido {OrderId} — ignorado.",
+                order.Id);
+            return;
+        }
+
         ValidatePaymentMatchesOrder(order, mpOrder);
 
         var mappedPaymentStatus = MapPaymentStatus(mpOrder.Status, mpOrder.StatusDetail);
 
-        // Idempotência: mesma order + mesmo status → no-op
         if (string.Equals(order.MercadoPagoOrderId, mpOrder.OrderId, StringComparison.Ordinal)
             && string.Equals(order.MercadoPagoPaymentStatus, mpOrder.Status, StringComparison.OrdinalIgnoreCase)
             && order.PaymentStatus == mappedPaymentStatus
             && MatchesOrderStatus(order.Status, mpOrder.Status, mpOrder.StatusDetail))
         {
+            _logger.LogInformation(
+                "Webhook MP repetido ignorado (idempotente) para pedido {OrderId}.",
+                order.Id);
             return;
         }
 
@@ -208,6 +319,32 @@ public class PaymentService : IPaymentService
             mpOrder.OrderId,
             mpOrder.Status,
             mpOrder.StatusDetail);
+    }
+
+    private bool CommercialCheckoutAllowedInCurrentEnvironment()
+    {
+        if (_options.IsProductionEnvironment)
+            return true;
+        // Em Test, checkout comercial só faz sentido se o valor oficial de teste for usado.
+        return _options.CanUseSandboxPixTest;
+    }
+
+    private (string Email, string? FirstName, string? Cpf) ResolvePayerForEnvironment(
+        Domain.Entities.Order order,
+        CreatePaymentRequest request)
+    {
+        if (_options.IsTestEnvironment)
+        {
+            return (
+                MercadoPagoOptions.SandboxPayerEmail,
+                MercadoPagoOptions.SandboxPayerFirstName,
+                null);
+        }
+
+        var email = string.IsNullOrWhiteSpace(request.PayerEmail)
+            ? order.CustomerEmail
+            : request.PayerEmail.Trim();
+        return (email, null, order.CustomerCpf);
     }
 
     private void ValidatePaymentMatchesOrder(Domain.Entities.Order order, MercadoPagoPaymentSnapshot payment)
@@ -255,10 +392,6 @@ public class PaymentService : IPaymentService
         });
     }
 
-    /// <summary>
-    /// action_required / waiting_transfer → aguardando pagamento;
-    /// processed / approved / accredited → pago.
-    /// </summary>
     private static string? ResolveEsoteraStatus(string mpStatus, string? mpStatusDetail)
     {
         var status = (mpStatus ?? "").Trim().ToLowerInvariant();

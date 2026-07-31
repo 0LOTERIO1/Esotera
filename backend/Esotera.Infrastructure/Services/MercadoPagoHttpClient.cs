@@ -70,9 +70,7 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning(
-                "Mercado Pago CreatePayment falhou com status {Status} (sem logar body sensível).",
-                (int)response.StatusCode);
+            LogSafeCreatePaymentError(response, raw);
             throw new ValidationException(
                 "payment",
                 "Não foi possível criar o pagamento. Verifique os dados e tente novamente.");
@@ -110,6 +108,116 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             throw new ValidationException(
                 "payment",
                 "Pagamento ainda não está configurado no servidor.");
+    }
+
+    /// <summary>
+    /// Diagnóstico temporário do erro CreatePayment — só campos seguros do MP.
+    /// Nunca registra Access Token, body da requisição, CPF, e-mail, QR ou payload bruto.
+    /// </summary>
+    private void LogSafeCreatePaymentError(HttpResponseMessage response, string rawBody)
+    {
+        var httpStatus = (int)response.StatusCode;
+        var wwwAuthenticate = response.Headers.WwwAuthenticate.Count > 0
+            ? string.Join("; ", response.Headers.WwwAuthenticate.Select(v => v.ToString()))
+            : "(ausente)";
+        var requestId = "(ausente)";
+        if (response.Headers.TryGetValues("x-request-id", out var reqIds))
+            requestId = reqIds.FirstOrDefault() ?? "(ausente)";
+        else if (response.Headers.TryGetValues("X-Request-Id", out var reqIds2))
+            requestId = reqIds2.FirstOrDefault() ?? "(ausente)";
+
+        string error = "(ausente)";
+        string message = "(ausente)";
+        string responseStatus = "(ausente)";
+        string causes = "(ausente)";
+
+        if (string.IsNullOrWhiteSpace(rawBody))
+        {
+            _logger.LogWarning(
+                "MercadoPago erro seguro:\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=corpo vazio",
+                httpStatus,
+                error,
+                message,
+                responseStatus,
+                causes,
+                wwwAuthenticate,
+                requestId);
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawBody);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("error", out var errorEl))
+                error = errorEl.ValueKind == JsonValueKind.String
+                    ? (errorEl.GetString() ?? "(ausente)")
+                    : errorEl.ToString();
+
+            if (root.TryGetProperty("message", out var messageEl))
+                message = messageEl.ValueKind == JsonValueKind.String
+                    ? (messageEl.GetString() ?? "(ausente)")
+                    : messageEl.ToString();
+
+            if (root.TryGetProperty("status", out var statusEl))
+                responseStatus = statusEl.ValueKind switch
+                {
+                    JsonValueKind.Number => statusEl.GetRawText(),
+                    JsonValueKind.String => statusEl.GetString() ?? "(ausente)",
+                    _ => statusEl.ToString()
+                };
+
+            if (root.TryGetProperty("cause", out var causeEl)
+                && causeEl.ValueKind == JsonValueKind.Array)
+            {
+                var parts = new List<string>();
+                foreach (var item in causeEl.EnumerateArray())
+                {
+                    string? code = null;
+                    string? description = null;
+                    if (item.ValueKind == JsonValueKind.Object)
+                    {
+                        if (item.TryGetProperty("code", out var codeEl))
+                            code = codeEl.ValueKind == JsonValueKind.Number
+                                ? codeEl.GetRawText()
+                                : codeEl.GetString();
+                        if (item.TryGetProperty("description", out var descEl))
+                            description = descEl.GetString();
+                        // Alguns payloads usam "message" dentro de cause.
+                        if (description is null && item.TryGetProperty("message", out var causeMsg))
+                            description = causeMsg.GetString();
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(code) || !string.IsNullOrWhiteSpace(description))
+                        parts.Add($"{code ?? "?"}:{description ?? "?"}");
+                }
+
+                causes = parts.Count > 0 ? string.Join(" | ", parts) : "(vazio)";
+            }
+
+            _logger.LogWarning(
+                "MercadoPago erro seguro:\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}",
+                httpStatus,
+                error,
+                message,
+                responseStatus,
+                causes,
+                wwwAuthenticate,
+                requestId);
+        }
+        catch (JsonException)
+        {
+            _logger.LogWarning(
+                "MercadoPago erro seguro:\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=nao foi possivel interpretar a resposta (conteudo bruto nao registrado)",
+                httpStatus,
+                error,
+                message,
+                responseStatus,
+                causes,
+                wwwAuthenticate,
+                requestId);
+        }
     }
 
     /// <summary>

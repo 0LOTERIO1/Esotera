@@ -29,6 +29,13 @@ public class MercadoPagoOptions
 
     /// <summary>Access Token — SOMENTE backend. Nunca NEXT_PUBLIC_.</summary>
     public string? AccessToken { get; set; }
+
+    /// <summary>
+    /// Nome da chave de configuração da qual <see cref="AccessToken"/> foi obtido
+    /// (diagnóstico temporário; nunca contém o valor do token).
+    /// </summary>
+    public string? AccessTokenSource { get; set; }
+
     public string? WebhookSecret { get; set; }
     /// <summary>test | production</summary>
     public string Environment { get; set; } = "test";

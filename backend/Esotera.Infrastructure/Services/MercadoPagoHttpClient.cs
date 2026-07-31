@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Esotera.Application.Exceptions;
@@ -57,8 +58,13 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
                 Encoding.UTF8,
                 "application/json")
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
+        var accessToken = (_options.AccessToken ?? string.Empty).Trim();
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         request.Headers.TryAddWithoutValidation("X-Idempotency-Key", idempotencyKey);
+        LogSafeAccessTokenDiagnostic(
+            accessToken,
+            new Uri(_http.BaseAddress!, "/v1/payments").AbsoluteUri,
+            request.Headers.Authorization?.Scheme);
 
         using var response = await _http.SendAsync(request, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -82,7 +88,8 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         EnsureConfigured();
 
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/v1/payments/{paymentId}");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
+        var accessToken = (_options.AccessToken ?? string.Empty).Trim();
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         using var response = await _http.SendAsync(request, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -103,6 +110,33 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             throw new ValidationException(
                 "payment",
                 "Pagamento ainda não está configurado no servidor.");
+    }
+
+    /// <summary>
+    /// Diagnóstico temporário do Access Token — nunca registra o valor completo.
+    /// </summary>
+    private void LogSafeAccessTokenDiagnostic(
+        string trimmedAccessToken,
+        string absoluteUrl,
+        string? authorizationScheme)
+    {
+        var hashPartial = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(trimmedAccessToken)))
+            .ToLowerInvariant()[..12];
+        var prefixoValido = trimmedAccessToken.StartsWith("APP_USR-", StringComparison.Ordinal);
+        var fonte = string.IsNullOrWhiteSpace(_options.AccessTokenSource)
+            ? "(desconhecida)"
+            : _options.AccessTokenSource;
+        var scheme = authorizationScheme ?? "(ausente)";
+
+        // Somente metadados seguros — nunca o Access Token.
+        _logger.LogWarning(
+            "MercadoPago diagnóstico:\nFonte={Fonte}\nTamanho={Tamanho}\nPrefixoValido={PrefixoValido}\nHashParcial={HashParcial}\nUrl={Url}\nAuthorizationScheme={AuthorizationScheme}",
+            fonte,
+            trimmedAccessToken.Length,
+            prefixoValido,
+            hashPartial,
+            absoluteUrl,
+            scheme);
     }
 
     private static object BuildPayer(string email, string? cpf)

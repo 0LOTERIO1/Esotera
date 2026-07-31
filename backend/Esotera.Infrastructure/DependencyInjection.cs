@@ -51,10 +51,12 @@ public static class DependencyInjection
         services.Configure<MercadoPagoOptions>(options =>
         {
             configuration.GetSection(MercadoPagoOptions.SectionName).Bind(options);
-            options.AccessToken = FirstNonEmpty(
-                options.AccessToken,
-                configuration["MERCADO_PAGO_ACCESS_TOKEN"],
-                configuration["MercadoPago:AccessToken"]);
+            var (accessToken, accessTokenSource) = FirstNonEmptyWithSource(
+                (options.AccessToken, "MercadoPago:AccessToken"),
+                (configuration["MERCADO_PAGO_ACCESS_TOKEN"], "MERCADO_PAGO_ACCESS_TOKEN"),
+                (configuration["MercadoPago:AccessToken"], "MercadoPago:AccessToken"));
+            options.AccessToken = accessToken;
+            options.AccessTokenSource = accessTokenSource;
             options.WebhookSecret = FirstNonEmpty(
                 options.WebhookSecret,
                 configuration["MERCADO_PAGO_WEBHOOK_SECRET"],
@@ -198,4 +200,20 @@ public static class DependencyInjection
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+    /// <summary>
+    /// Primeiro valor não vazio, já com Trim(). A fonte indica a chave de configuração usada.
+    /// </summary>
+    private static (string? Value, string? Source) FirstNonEmptyWithSource(
+        params (string? Value, string Source)[] candidates)
+    {
+        foreach (var (value, source) in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+            return (value.Trim(), source);
+        }
+
+        return (null, null);
+    }
 }

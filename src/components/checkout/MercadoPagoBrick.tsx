@@ -22,14 +22,13 @@ type MercadoPagoBrickProps = {
 };
 
 /**
- * Payment Brick — fase 1: somente Pix (Orders API).
- * Cartão e boleto ficam desabilitados no Brick e no backend.
+ * Payment Brick — somente produção / checkout comercial Pix.
+ * Em sandbox Test o fluxo isolado vive na página de pagamento (sem Brick).
  */
 export function MercadoPagoBrick({
   orderId,
   amount,
   payerEmail,
-  isTestEnvironment = false,
   onPaid,
   onPending,
 }: MercadoPagoBrickProps) {
@@ -57,6 +56,9 @@ export function MercadoPagoBrick({
         debitCard: "none" as const,
         ticket: "none" as const,
         bankTransfer: ["pix"],
+      },
+      visual: {
+        hidePaymentButton: false,
       },
     }),
     [],
@@ -146,15 +148,8 @@ export function MercadoPagoBrick({
         <span className="font-medium text-esotera-text">
           {formatCurrency(amount)}
         </span>
-        . Nesta fase o pagamento comercial é somente via Pix.
+        . Pagamento comercial somente via Pix.
       </p>
-      {isTestEnvironment ? (
-        <p className="text-sm text-esotera-muted">
-          Em sandbox, o Mercado Pago só aceita o valor oficial de teste (R$
-          50,00) no checkout comercial. Para outros totais, use o Pix de teste
-          isolado acima.
-        </p>
-      ) : null}
       <ul className="text-sm text-esotera-muted">
         <li>Pix — disponível</li>
         <li>Cartão — Em breve</li>

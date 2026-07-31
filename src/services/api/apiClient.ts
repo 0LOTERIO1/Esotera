@@ -33,7 +33,7 @@ export class ApiError extends Error {
       return this.detail || "Credenciais inválidas. Verifique e-mail e senha.";
     }
     if (this.status === 403) {
-      return "Você não tem permissão para esta ação.";
+      return this.detail || "Você não tem permissão para esta ação.";
     }
     if (this.status === 404) {
       return "Recurso não encontrado.";

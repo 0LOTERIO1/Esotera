@@ -46,11 +46,67 @@ export type SandboxPixTestResponse = {
   isSandboxTest: boolean;
 };
 
+/** Normaliza possíveis variantes de casing da API. */
+function normalizePaymentConfig(raw: Record<string, unknown>): PaymentEnvironmentConfig {
+  const environment = String(
+    raw.environment ?? raw.Environment ?? "Production",
+  );
+  const sandboxPixEnabled = Boolean(
+    raw.sandboxPixEnabled ?? raw.SandboxPixEnabled ?? false,
+  );
+  const amountRaw = raw.sandboxPixAmount ?? raw.SandboxPixAmount ?? 50;
+  const sandboxPixAmount =
+    typeof amountRaw === "number" ? amountRaw : Number(amountRaw) || 50;
+  const commercialCheckoutAllowedInTest = Boolean(
+    raw.commercialCheckoutAllowedInTest ??
+      raw.CommercialCheckoutAllowedInTest ??
+      false,
+  );
+  return {
+    environment,
+    sandboxPixEnabled,
+    sandboxPixAmount,
+    commercialCheckoutAllowedInTest,
+  };
+}
+
+function normalizeSandboxResponse(
+  raw: Record<string, unknown>,
+): SandboxPixTestResponse {
+  return {
+    mercadoPagoOrderId: String(
+      raw.mercadoPagoOrderId ?? raw.MercadoPagoOrderId ?? "",
+    ),
+    mercadoPagoPaymentId: (raw.mercadoPagoPaymentId ??
+      raw.MercadoPagoPaymentId ??
+      null) as string | null,
+    amount: Number(raw.amount ?? raw.Amount ?? 50),
+    currency: String(raw.currency ?? raw.Currency ?? "BRL"),
+    status: String(raw.status ?? raw.Status ?? ""),
+    statusDetail: String(raw.statusDetail ?? raw.StatusDetail ?? ""),
+    externalReference: String(
+      raw.externalReference ?? raw.ExternalReference ?? "",
+    ),
+    ticketUrl: (raw.ticketUrl ?? raw.TicketUrl ?? null) as string | null,
+    qrCode: (raw.qrCode ?? raw.QrCode ?? null) as string | null,
+    qrCodeBase64: (raw.qrCodeBase64 ?? raw.QrCodeBase64 ?? null) as
+      | string
+      | null,
+    dateOfExpiration: (raw.dateOfExpiration ??
+      raw.DateOfExpiration ??
+      null) as string | null,
+    message: String(raw.message ?? raw.Message ?? ""),
+    isSandboxTest: Boolean(raw.isSandboxTest ?? raw.IsSandboxTest ?? true),
+  };
+}
+
 export const paymentsApi = {
   async getConfig(): Promise<PaymentEnvironmentConfig> {
-    return apiClient.get<PaymentEnvironmentConfig>("/api/payments/config", {
-      auth: false,
-    });
+    const raw = await apiClient.get<Record<string, unknown>>(
+      "/api/payments/config",
+      { auth: false },
+    );
+    return normalizePaymentConfig(raw ?? {});
   },
 
   async createForOrder(
@@ -77,7 +133,7 @@ export const paymentsApi = {
   async createSandboxPixTest(
     idempotencyKey: string,
   ): Promise<SandboxPixTestResponse> {
-    return apiClient.post<SandboxPixTestResponse>(
+    const raw = await apiClient.post<Record<string, unknown>>(
       "/api/payments/sandbox/pix-test",
       {},
       {
@@ -85,5 +141,6 @@ export const paymentsApi = {
         headers: { "Idempotency-Key": idempotencyKey },
       },
     );
+    return normalizeSandboxResponse(raw ?? {});
   },
 };

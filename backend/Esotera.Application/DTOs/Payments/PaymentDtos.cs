@@ -1,8 +1,8 @@
 namespace Esotera.Application.DTOs.Payments;
 
 /// <summary>
-/// Criação de pagamento. Nunca inclui número de cartão ou CVV —
-/// apenas token do Brick (cartão) ou método Pix.
+/// Criação de pagamento. Fase 1: somente Pix (Orders API).
+/// Nunca inclui número de cartão ou CVV.
 /// </summary>
 public record CreatePaymentRequest(
     string? Token,
@@ -18,10 +18,12 @@ public record CreatePaymentResponse(
     decimal Amount,
     string Currency,
     string Status,
+    string? MercadoPagoOrderId,
     string? MercadoPagoPaymentId,
     string? TicketUrl,
     string? QrCode,
     string? QrCodeBase64,
+    string? DateOfExpiration,
     string Message
 );
 

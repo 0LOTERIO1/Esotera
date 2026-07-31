@@ -18,7 +18,8 @@ type MercadoPagoBrickProps = {
 };
 
 /**
- * Payment Brick oficial. Nunca envia PAN/CVV ao nosso backend — só o token.
+ * Payment Brick — fase 1: somente Pix (Orders API).
+ * Cartão e boleto ficam desabilitados no Brick e no backend.
  */
 export function MercadoPagoBrick({
   orderId,
@@ -44,11 +45,13 @@ export function MercadoPagoBrick({
   const customization = useMemo(
     () => ({
       paymentMethods: {
-        maxInstallments: 2,
+        maxInstallments: 1,
         minInstallments: 1,
-        creditCard: "all" as const,
+        // Fase 1: somente Pix.
+        creditCard: "none" as const,
+        debitCard: "none" as const,
+        ticket: "none" as const,
         bankTransfer: ["pix"],
-        ticket: "all" as const,
       },
     }),
     [],
@@ -59,35 +62,25 @@ export function MercadoPagoBrick({
       setSubmitError(null);
       const formData = (param.formData ?? param) as Record<string, unknown>;
       try {
-        const paymentMethodId = String(formData.payment_method_id ?? "");
-        const token =
-          typeof formData.token === "string" ? formData.token : undefined;
-        const installmentsRaw = formData.installments;
-        const installments =
-          typeof installmentsRaw === "number"
-            ? installmentsRaw
-            : installmentsRaw
-              ? Number(installmentsRaw)
-              : undefined;
-        const issuerId =
-          formData.issuer_id != null ? String(formData.issuer_id) : undefined;
+        const paymentMethodId = String(formData.payment_method_id ?? "").toLowerCase();
+        if (paymentMethodId !== "pix") {
+          const message =
+            "Nesta fase somente Pix está disponível. Cartão e boleto em breve.";
+          setSubmitError(message);
+          push("error", message);
+          throw new Error(message);
+        }
 
         const result = await paymentsApi.createForOrder(
           orderId,
           {
-            token,
-            paymentMethodId,
-            installments:
-              installments && installments >= 1 && installments <= 2
-                ? installments
-                : 1,
-            issuerId,
+            paymentMethodId: "pix",
             payerEmail,
           },
           createIdempotencyKey(),
         );
 
-        if (result.status === "approved") {
+        if (result.status === "approved" || result.status === "processed") {
           push("success", "Pagamento aprovado.");
           onPaid?.();
           return;
@@ -100,12 +93,13 @@ export function MercadoPagoBrick({
           });
           push(
             "info",
-            "Pix gerado. Conclua o pagamento para confirmar o pedido.",
+            result.message ||
+              "Aguardando pagamento. Conclua o Pix para confirmar o pedido.",
           );
           return;
         }
 
-        push("info", result.message || "Pagamento em processamento.");
+        push("info", result.message || "Aguardando pagamento.");
         onPending?.({});
       } catch (err) {
         const message =
@@ -137,8 +131,13 @@ export function MercadoPagoBrick({
         <span className="font-medium text-esotera-text">
           {formatCurrency(amount)}
         </span>
-        . Cartão em até 2x sem juros ou Pix.
+        . Nesta fase o pagamento é somente via Pix.
       </p>
+      <ul className="text-sm text-esotera-muted">
+        <li>Pix — disponível</li>
+        <li>Cartão — Em breve</li>
+        <li>Boleto — Em breve</li>
+      </ul>
       {submitError ? (
         <p className="text-sm text-esotera-error" role="alert">
           {submitError}

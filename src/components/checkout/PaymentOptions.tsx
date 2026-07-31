@@ -66,17 +66,19 @@ export function PaymentOptions({
         </legend>
         {(
           [
-            ["pix", "Pix"],
-            ["card", "Cartão de crédito"],
-            ["boleto", "Boleto"],
+            ["pix", "Pix", false],
+            ["card", "Cartão de crédito", true],
+            ["boleto", "Boleto", true],
           ] as const
-        ).map(([value, label]) => (
+        ).map(([value, label, soon]) => (
           <label
             key={value}
-            className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 ${
-              method === value
-                ? "border-esotera-primary bg-esotera-primary/5"
-                : "border-esotera-border"
+            className={`flex items-center gap-3 rounded-md border p-3 ${
+              soon
+                ? "cursor-not-allowed border-esotera-border opacity-60"
+                : method === value
+                  ? "cursor-pointer border-esotera-primary bg-esotera-primary/5"
+                  : "cursor-pointer border-esotera-border"
             }`}
           >
             <input
@@ -84,9 +86,17 @@ export function PaymentOptions({
               name="payment"
               value={value}
               checked={method === value}
-              onChange={() => onMethodChange(value)}
+              disabled={soon}
+              onChange={() => {
+                if (!soon) onMethodChange(value);
+              }}
             />
-            <span className="text-sm text-esotera-text">{label}</span>
+            <span className="text-sm text-esotera-text">
+              {label}
+              {soon ? (
+                <span className="ml-2 text-esotera-muted">(Em breve)</span>
+              ) : null}
+            </span>
           </label>
         ))}
       </fieldset>

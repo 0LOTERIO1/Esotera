@@ -45,9 +45,11 @@ public class Order
     public int? PaymentInstallments { get; set; }
     public string PaymentStatus { get; set; } = string.Empty;
 
-    /// <summary>ID do pagamento no Mercado Pago (nunca cartão/CVV).</summary>
+    /// <summary>ID da order no Mercado Pago (ORD…). Preferencial para webhook/consulta.</summary>
+    public string? MercadoPagoOrderId { get; set; }
+    /// <summary>ID do pagamento interno na order (PAY…) ou legado Payments API.</summary>
     public string? MercadoPagoPaymentId { get; set; }
-    /// <summary>Último status reportado pelo MP (approved, pending, rejected…).</summary>
+    /// <summary>Último status reportado pelo MP (action_required, processed, approved…).</summary>
     public string? MercadoPagoPaymentStatus { get; set; }
     /// <summary>Idempotência da criação do pagamento no MP.</summary>
     public string? PaymentIdempotencyKey { get; set; }

@@ -9,7 +9,9 @@ public class CreatePaymentRequestValidator : AbstractValidator<CreatePaymentRequ
     {
         RuleFor(x => x.PaymentMethodId)
             .NotEmpty().WithMessage("Método de pagamento é obrigatório.")
-            .MaximumLength(50);
+            .MaximumLength(50)
+            .Must(m => string.Equals(m?.Trim(), "pix", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Nesta fase somente Pix está disponível. Cartão e boleto em breve.");
 
         RuleFor(x => x.Token)
             .MaximumLength(512);
@@ -23,8 +25,5 @@ public class CreatePaymentRequestValidator : AbstractValidator<CreatePaymentRequ
             .EmailAddress()
             .When(x => !string.IsNullOrWhiteSpace(x.PayerEmail))
             .WithMessage("E-mail do pagador inválido.");
-
-        // Nunca aceitar campos sensíveis se alguém tentar estender o DTO no futuro —
-        // o contrato atual não possui CardNumber/Cvv.
     }
 }

@@ -3,11 +3,12 @@ using Esotera.Application.Interfaces;
 namespace Esotera.Infrastructure.Services;
 
 /// <summary>
-/// Cliente fake para testes — sem credenciais e sem chamadas HTTP reais.
+/// Cliente fake para testes — Orders API (Pix), sem credenciais e sem HTTP real.
 /// </summary>
 public class FakeMercadoPagoClient : IMercadoPagoClient
 {
-    private readonly Dictionary<string, MercadoPagoPaymentSnapshot> _byId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MercadoPagoPaymentSnapshot> _byOrderId =
+        new(StringComparer.Ordinal);
     private int _seq;
 
     public string LastIdempotencyKey { get; private set; } = "";
@@ -21,37 +22,43 @@ public class FakeMercadoPagoClient : IMercadoPagoClient
         LastIdempotencyKey = idempotencyKey;
         Created.Add(command);
 
-        var id = (++_seq).ToString();
-        var isPix = string.Equals(command.PaymentMethodId, "pix", StringComparison.OrdinalIgnoreCase);
-        var status = isPix ? "pending" : "approved";
+        var method = (command.PaymentMethodId ?? "").Trim().ToLowerInvariant();
+        if (method is not "pix")
+            throw new InvalidOperationException("Fake MP: somente Pix nesta fase.");
+
+        var n = ++_seq;
+        var orderId = $"ORDFAKE{n:D20}";
+        var payId = $"PAYFAKE{n:D20}";
 
         var snapshot = new MercadoPagoPaymentSnapshot(
-            id,
-            status,
-            isPix ? "pending_waiting_transfer" : "accredited",
+            orderId,
+            payId,
+            "action_required",
+            "waiting_transfer",
             command.TransactionAmount,
             "BRL",
             command.ExternalReference,
-            command.PaymentMethodId,
-            isPix ? "00020126fake-pix-copia-cola-test" : null,
-            isPix ? "aW1hZ2UtZmFrZS1iYXNlNjQ=" : null,
-            isPix ? "https://example.test/pix-ticket" : null);
+            "pix",
+            "00020126fake-pix-copia-cola-test",
+            "aW1hZ2UtZmFrZS1iYXNlNjQ=",
+            "https://example.test/pix-ticket",
+            DateTime.UtcNow.AddHours(24).ToString("O"));
 
-        _byId[id] = snapshot;
+        _byOrderId[orderId] = snapshot;
         return Task.FromResult(snapshot);
     }
 
-    public Task<MercadoPagoPaymentSnapshot> GetPaymentAsync(
-        string paymentId,
+    public Task<MercadoPagoPaymentSnapshot> GetOrderAsync(
+        string orderId,
         CancellationToken cancellationToken = default)
     {
-        if (_byId.TryGetValue(paymentId, out var snap))
+        if (_byOrderId.TryGetValue(orderId, out var snap))
             return Task.FromResult(snap);
 
-        // Permite simular aprovação posterior em testes de webhook
         var pending = new MercadoPagoPaymentSnapshot(
-            paymentId,
-            "approved",
+            orderId,
+            null,
+            "processed",
             "accredited",
             0m,
             "BRL",
@@ -59,24 +66,35 @@ public class FakeMercadoPagoClient : IMercadoPagoClient
             "pix",
             null,
             null,
+            null,
             null);
         return Task.FromResult(pending);
     }
 
-    public void Seed(MercadoPagoPaymentSnapshot snapshot) => _byId[snapshot.Id] = snapshot;
+    public void Seed(MercadoPagoPaymentSnapshot snapshot) =>
+        _byOrderId[snapshot.OrderId] = snapshot;
 
-    public void SetStatus(string paymentId, string status, decimal amount, string externalReference)
+    public void SetStatus(
+        string orderId,
+        string status,
+        decimal amount,
+        string externalReference,
+        string? paymentId = null,
+        string? statusDetail = null)
     {
-        _byId[paymentId] = new MercadoPagoPaymentSnapshot(
-            paymentId,
+        _byOrderId.TryGetValue(orderId, out var existing);
+        _byOrderId[orderId] = new MercadoPagoPaymentSnapshot(
+            orderId,
+            paymentId ?? existing?.TransactionPaymentId,
             status,
-            status,
+            statusDetail ?? status,
             amount,
             "BRL",
             externalReference,
             "pix",
-            "00020126fake-pix-copia-cola-test",
-            "aW1hZ2UtZmFrZS1iYXNlNjQ=",
-            null);
+            existing?.QrCode ?? "00020126fake-pix-copia-cola-test",
+            existing?.QrCodeBase64 ?? "aW1hZ2UtZmFrZS1iYXNlNjQ=",
+            existing?.TicketUrl,
+            existing?.DateOfExpiration);
     }
 }

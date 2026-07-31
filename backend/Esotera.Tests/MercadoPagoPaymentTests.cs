@@ -68,7 +68,44 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
         payment!.QrCode.Should().NotBeNullOrWhiteSpace();
         payment.QrCodeBase64.Should().NotBeNullOrWhiteSpace();
         payment.Status.Should().Be("pending");
+        payment.MercadoPagoOrderId.Should().StartWith("ORD");
+        payment.MercadoPagoPaymentId.Should().StartWith("PAY");
+        payment.Message.Should().Contain("Aguardando pagamento");
         payment.Amount.Should().Be(order.Total);
+    }
+
+    [Fact]
+    public async Task CreatePayment_Card_IsRejectedInPhase1()
+    {
+        var (token, _) = await TestHelpers.RegisterNewUserAsync(
+            _client, $"paycard{Guid.NewGuid():N}@test.com");
+        TestHelpers.SetBearerToken(_client, token);
+
+        var orderReq = new CreateOrderRequest(
+            [new CreateOrderItemRequest(ProductId, 1, null)],
+            new OrderAddressInput("01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
+            null,
+            "melhor_economico",
+            "pix",
+            null,
+            null);
+        var orderRes = await TestHelpers.PostOrderAsync(_client, orderReq);
+        var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+
+        using var payReq = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{order!.Id}/payments")
+        {
+            Content = JsonContent.Create(new CreatePaymentRequest(
+                "fake-card-token",
+                "visa",
+                1,
+                null,
+                null))
+        };
+        payReq.Headers.TryAddWithoutValidation("Idempotency-Key", $"pay-{Guid.NewGuid():N}"[..32]);
+        payReq.Headers.Authorization = _client.DefaultRequestHeaders.Authorization;
+
+        var payRes = await _client.SendAsync(payReq);
+        payRes.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -82,7 +119,7 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
     }
 
     [Fact]
-    public async Task Webhook_Approved_MarksOrderPaid_Idempotently()
+    public async Task Webhook_OrderProcessed_MarksOrderPaid_Idempotently()
     {
         var (token, _) = await TestHelpers.RegisterNewUserAsync(
             _client, $"payhook{Guid.NewGuid():N}@test.com");
@@ -111,18 +148,24 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
         using (var scope = _factory.Services.CreateScope())
         {
             var fake = scope.ServiceProvider.GetRequiredService<FakeMercadoPagoClient>();
-            fake.SetStatus(payment!.MercadoPagoPaymentId!, "approved", order.Total, order.Id.ToString("D"));
+            fake.SetStatus(
+                payment!.MercadoPagoOrderId!,
+                "processed",
+                order.Total,
+                order.Id.ToString("D"),
+                payment.MercadoPagoPaymentId,
+                "accredited");
         }
 
         var body = JsonSerializer.Serialize(new
         {
-            action = "payment.updated",
-            type = "payment",
-            data = new { id = payment!.MercadoPagoPaymentId }
+            action = "order.processed",
+            type = "order",
+            data = new { id = payment!.MercadoPagoOrderId }
         });
 
         var secret = "test-webhook-secret";
-        var dataId = payment.MercadoPagoPaymentId!;
+        var dataId = payment.MercadoPagoOrderId!;
         var requestId = Guid.NewGuid().ToString("N");
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
         var manifest = $"id:{dataId.ToLowerInvariant()};request-id:{requestId};ts:{ts};";
@@ -144,7 +187,6 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
         var after1 = await get1.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         after1!.Status.Should().Be("payment_approved");
 
-        // Segunda entrega do mesmo evento — idempotente
         using var hook2 = new HttpRequestMessage(HttpMethod.Post, $"/api/webhooks/mercadopago?data.id={dataId}")
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json")
@@ -170,14 +212,13 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
             new OrderAddressInput("01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
             null,
             "melhor_expresso",
-            "card",
-            1,
+            "pix",
+            null,
             null);
         var orderRes = await TestHelpers.PostOrderAsync(_client, orderReq);
         var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         order!.Status.Should().Be("awaiting_payment");
 
-        // Simula “retorno do navegador”: apenas GET do pedido — continua awaiting
         var get = await _client.GetAsync($"/api/orders/{order.Id}");
         var again = await get.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         again!.Status.Should().Be("awaiting_payment");

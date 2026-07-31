@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Esotera.Application.Exceptions;
@@ -11,6 +10,9 @@ using Microsoft.Extensions.Options;
 
 namespace Esotera.Infrastructure.Services;
 
+/// <summary>
+/// Cliente HTTP da Orders API (Checkout Transparente). Fase 1: somente Pix.
+/// </summary>
 public class MercadoPagoHttpClient : IMercadoPagoClient
 {
     private readonly HttpClient _http;
@@ -34,72 +36,97 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
     {
         EnsureConfigured();
 
+        var methodId = (command.PaymentMethodId ?? "").Trim().ToLowerInvariant();
+        if (methodId is not "pix")
+        {
+            throw new ValidationException(
+                "paymentMethodId",
+                "Nesta fase somente Pix está disponível. Cartão e boleto em breve.");
+        }
+
+        var amount = FormatAmount(command.TransactionAmount);
         var body = new Dictionary<string, object?>
         {
-            ["transaction_amount"] = command.TransactionAmount,
-            ["description"] = command.Description,
+            ["type"] = "online",
             ["external_reference"] = command.ExternalReference,
-            ["payment_method_id"] = command.PaymentMethodId,
-            ["installments"] = command.Installments,
+            ["description"] = command.Description,
+            ["total_amount"] = amount,
             ["payer"] = BuildPayer(command.PayerEmail, command.PayerCpf),
+            ["transactions"] = new Dictionary<string, object?>
+            {
+                ["payments"] = new object[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["amount"] = amount,
+                        ["payment_method"] = new Dictionary<string, object?>
+                        {
+                            ["id"] = "pix",
+                            ["type"] = "bank_transfer",
+                        },
+                    },
+                },
+            },
         };
 
-        if (!string.IsNullOrWhiteSpace(command.Token))
-            body["token"] = command.Token;
-        if (!string.IsNullOrWhiteSpace(command.IssuerId))
-            body["issuer_id"] = command.IssuerId;
-        if (!string.IsNullOrWhiteSpace(command.NotificationUrl))
-            body["notification_url"] = command.NotificationUrl;
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/payments")
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/orders")
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(body),
                 Encoding.UTF8,
                 "application/json")
         };
-        var accessToken = (_options.AccessToken ?? string.Empty).Trim();
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        request.Headers.TryAddWithoutValidation("X-Idempotency-Key", idempotencyKey);
-        LogSafeAccessTokenDiagnostic(
-            accessToken,
-            new Uri(_http.BaseAddress!, "/v1/payments").AbsoluteUri,
-            request.Headers.Authorization?.Scheme);
+        ApplyAuth(request, idempotencyKey);
 
         using var response = await _http.SendAsync(request, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            LogSafeCreatePaymentError(response, raw);
+            LogSafeApiError("CreateOrder", response, raw);
             throw new ValidationException(
                 "payment",
-                "Não foi possível criar o pagamento. Verifique os dados e tente novamente.");
+                "Não foi possível criar o pagamento Pix. Verifique os dados e tente novamente.");
         }
 
-        return ParsePayment(raw);
+        var snapshot = ParseOrder(raw);
+        _logger.LogInformation(
+            "Mercado Pago order criada: OrderId={OrderId} PaymentId={PaymentId} Status={Status} StatusDetail={StatusDetail}",
+            snapshot.OrderId,
+            snapshot.TransactionPaymentId ?? "(ausente)",
+            snapshot.Status,
+            snapshot.StatusDetail);
+        return snapshot;
     }
 
-    public async Task<MercadoPagoPaymentSnapshot> GetPaymentAsync(
-        string paymentId,
+    public async Task<MercadoPagoPaymentSnapshot> GetOrderAsync(
+        string orderId,
         CancellationToken cancellationToken = default)
     {
         EnsureConfigured();
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/v1/payments/{paymentId}");
-        var accessToken = (_options.AccessToken ?? string.Empty).Trim();
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        if (string.IsNullOrWhiteSpace(orderId))
+            throw new ValidationException("orderId", "ID da order Mercado Pago inválido.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/v1/orders/{orderId.Trim()}");
+        ApplyAuth(request, idempotencyKey: null);
 
         using var response = await _http.SendAsync(request, cancellationToken);
         var raw = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning(
-                "Mercado Pago GetPayment falhou com status {Status} para id informado.",
-                (int)response.StatusCode);
-            throw new NotFoundException("Pagamento Mercado Pago", paymentId);
+            LogSafeApiError("GetOrder", response, raw);
+            throw new NotFoundException("Order Mercado Pago", orderId);
         }
 
-        return ParsePayment(raw);
+        return ParseOrder(raw);
+    }
+
+    private void ApplyAuth(HttpRequestMessage request, string? idempotencyKey)
+    {
+        var accessToken = (_options.AccessToken ?? string.Empty).Trim();
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            request.Headers.TryAddWithoutValidation("X-Idempotency-Key", idempotencyKey);
     }
 
     private void EnsureConfigured()
@@ -111,10 +138,9 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
     }
 
     /// <summary>
-    /// Diagnóstico temporário do erro CreatePayment — só campos seguros do MP.
-    /// Nunca registra Access Token, body da requisição, CPF, e-mail, QR ou payload bruto.
+    /// Log seguro de erro da API MP — sem Access Token, body da request, CPF, e-mail ou payload bruto.
     /// </summary>
-    private void LogSafeCreatePaymentError(HttpResponseMessage response, string rawBody)
+    private void LogSafeApiError(string operation, HttpResponseMessage response, string rawBody)
     {
         var httpStatus = (int)response.StatusCode;
         var wwwAuthenticate = response.Headers.WwwAuthenticate.Count > 0
@@ -123,8 +149,6 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         var requestId = "(ausente)";
         if (response.Headers.TryGetValues("x-request-id", out var reqIds))
             requestId = reqIds.FirstOrDefault() ?? "(ausente)";
-        else if (response.Headers.TryGetValues("X-Request-Id", out var reqIds2))
-            requestId = reqIds2.FirstOrDefault() ?? "(ausente)";
 
         string error = "(ausente)";
         string message = "(ausente)";
@@ -134,7 +158,8 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         if (string.IsNullOrWhiteSpace(rawBody))
         {
             _logger.LogWarning(
-                "MercadoPago erro seguro:\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=corpo vazio",
+                "MercadoPago erro seguro ({Operation}):\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=corpo vazio",
+                operation,
                 httpStatus,
                 error,
                 message,
@@ -151,22 +176,11 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             var root = doc.RootElement;
 
             if (root.TryGetProperty("error", out var errorEl))
-                error = errorEl.ValueKind == JsonValueKind.String
-                    ? (errorEl.GetString() ?? "(ausente)")
-                    : errorEl.ToString();
-
+                error = ReadStringish(errorEl);
             if (root.TryGetProperty("message", out var messageEl))
-                message = messageEl.ValueKind == JsonValueKind.String
-                    ? (messageEl.GetString() ?? "(ausente)")
-                    : messageEl.ToString();
-
+                message = ReadStringish(messageEl);
             if (root.TryGetProperty("status", out var statusEl))
-                responseStatus = statusEl.ValueKind switch
-                {
-                    JsonValueKind.Number => statusEl.GetRawText(),
-                    JsonValueKind.String => statusEl.GetString() ?? "(ausente)",
-                    _ => statusEl.ToString()
-                };
+                responseStatus = ReadStringish(statusEl);
 
             if (root.TryGetProperty("cause", out var causeEl)
                 && causeEl.ValueKind == JsonValueKind.Array)
@@ -174,21 +188,15 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
                 var parts = new List<string>();
                 foreach (var item in causeEl.EnumerateArray())
                 {
+                    if (item.ValueKind != JsonValueKind.Object) continue;
                     string? code = null;
                     string? description = null;
-                    if (item.ValueKind == JsonValueKind.Object)
-                    {
-                        if (item.TryGetProperty("code", out var codeEl))
-                            code = codeEl.ValueKind == JsonValueKind.Number
-                                ? codeEl.GetRawText()
-                                : codeEl.GetString();
-                        if (item.TryGetProperty("description", out var descEl))
-                            description = descEl.GetString();
-                        // Alguns payloads usam "message" dentro de cause.
-                        if (description is null && item.TryGetProperty("message", out var causeMsg))
-                            description = causeMsg.GetString();
-                    }
-
+                    if (item.TryGetProperty("code", out var codeEl))
+                        code = ReadStringish(codeEl);
+                    if (item.TryGetProperty("description", out var descEl))
+                        description = descEl.GetString();
+                    if (description is null && item.TryGetProperty("message", out var causeMsg))
+                        description = causeMsg.GetString();
                     if (!string.IsNullOrWhiteSpace(code) || !string.IsNullOrWhiteSpace(description))
                         parts.Add($"{code ?? "?"}:{description ?? "?"}");
                 }
@@ -197,7 +205,8 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             }
 
             _logger.LogWarning(
-                "MercadoPago erro seguro:\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}",
+                "MercadoPago erro seguro ({Operation}):\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}",
+                operation,
                 httpStatus,
                 error,
                 message,
@@ -209,43 +218,26 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         catch (JsonException)
         {
             _logger.LogWarning(
-                "MercadoPago erro seguro:\nHttpStatus={HttpStatus}\nError={Error}\nMessage={Message}\nResponseStatus={ResponseStatus}\nCauses={Causes}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=nao foi possivel interpretar a resposta (conteudo bruto nao registrado)",
+                "MercadoPago erro seguro ({Operation}):\nHttpStatus={HttpStatus}\nWwwAuthenticate={WwwAuthenticate}\nRequestId={RequestId}\nJsonParse=nao foi possivel interpretar a resposta (conteudo bruto nao registrado)",
+                operation,
                 httpStatus,
-                error,
-                message,
-                responseStatus,
-                causes,
                 wwwAuthenticate,
                 requestId);
         }
     }
 
-    /// <summary>
-    /// Diagnóstico temporário do Access Token — nunca registra o valor completo.
-    /// </summary>
-    private void LogSafeAccessTokenDiagnostic(
-        string trimmedAccessToken,
-        string absoluteUrl,
-        string? authorizationScheme)
-    {
-        var hashPartial = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(trimmedAccessToken)))
-            .ToLowerInvariant()[..12];
-        var prefixoValido = trimmedAccessToken.StartsWith("APP_USR-", StringComparison.Ordinal);
-        var fonte = string.IsNullOrWhiteSpace(_options.AccessTokenSource)
-            ? "(desconhecida)"
-            : _options.AccessTokenSource;
-        var scheme = authorizationScheme ?? "(ausente)";
+    private static string ReadStringish(JsonElement el) =>
+        el.ValueKind switch
+        {
+            JsonValueKind.String => el.GetString() ?? "(ausente)",
+            JsonValueKind.Number => el.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => el.ToString()
+        };
 
-        // Somente metadados seguros — nunca o Access Token.
-        _logger.LogWarning(
-            "MercadoPago diagnóstico:\nFonte={Fonte}\nTamanho={Tamanho}\nPrefixoValido={PrefixoValido}\nHashParcial={HashParcial}\nUrl={Url}\nAuthorizationScheme={AuthorizationScheme}",
-            fonte,
-            trimmedAccessToken.Length,
-            prefixoValido,
-            hashPartial,
-            absoluteUrl,
-            scheme);
-    }
+    private static string FormatAmount(decimal amount) =>
+        amount.ToString("0.00", CultureInfo.InvariantCulture);
 
     private static object BuildPayer(string email, string? cpf)
     {
@@ -260,45 +252,87 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         };
     }
 
-    private static MercadoPagoPaymentSnapshot ParsePayment(string raw)
+    private static MercadoPagoPaymentSnapshot ParseOrder(string raw)
     {
         using var doc = JsonDocument.Parse(raw);
         var root = doc.RootElement;
 
-        var id = root.GetProperty("id").ToString();
-        var status = root.GetProperty("status").GetString() ?? "unknown";
+        var orderId = root.GetProperty("id").ToString();
+        var status = root.TryGetProperty("status", out var st)
+            ? st.GetString() ?? "unknown"
+            : "unknown";
         var statusDetail = root.TryGetProperty("status_detail", out var sd)
             ? sd.GetString() ?? ""
             : "";
-        var amount = root.TryGetProperty("transaction_amount", out var amt)
-            ? amt.GetDecimal()
-            : 0m;
-        var currency = root.TryGetProperty("currency_id", out var cur)
-            ? cur.GetString() ?? "BRL"
-            : "BRL";
         var externalRef = root.TryGetProperty("external_reference", out var er)
             ? er.GetString() ?? ""
             : "";
-        var methodId = root.TryGetProperty("payment_method_id", out var pm)
-            ? pm.GetString()
-            : null;
 
+        var amount = 0m;
+        if (root.TryGetProperty("total_amount", out var totalEl))
+            amount = ParseDecimal(totalEl);
+        else if (root.TryGetProperty("total_paid_amount", out var paidEl))
+            amount = ParseDecimal(paidEl);
+
+        var currency = "BRL";
+        if (root.TryGetProperty("currency_id", out var cur) && cur.ValueKind == JsonValueKind.String)
+            currency = cur.GetString() ?? "BRL";
+
+        string? payId = null;
+        string? methodId = null;
         string? qrCode = null;
         string? qrBase64 = null;
         string? ticketUrl = null;
-        if (root.TryGetProperty("point_of_interaction", out var poi)
-            && poi.TryGetProperty("transaction_data", out var td))
+        string? dateOfExpiration = null;
+
+        if (root.TryGetProperty("transactions", out var tx)
+            && tx.TryGetProperty("payments", out var payments)
+            && payments.ValueKind == JsonValueKind.Array)
         {
-            if (td.TryGetProperty("qr_code", out var qr))
-                qrCode = qr.GetString();
-            if (td.TryGetProperty("qr_code_base64", out var qrb))
-                qrBase64 = qrb.GetString();
-            if (td.TryGetProperty("ticket_url", out var tu))
-                ticketUrl = tu.GetString();
+            foreach (var payment in payments.EnumerateArray())
+            {
+                if (payment.TryGetProperty("id", out var pid))
+                    payId = pid.ToString();
+
+                if (payment.TryGetProperty("amount", out var payAmt) && amount <= 0)
+                    amount = ParseDecimal(payAmt);
+
+                if (payment.TryGetProperty("status", out var pst)
+                    && string.Equals(status, "unknown", StringComparison.OrdinalIgnoreCase))
+                    status = pst.GetString() ?? status;
+
+                if (payment.TryGetProperty("status_detail", out var psd)
+                    && string.IsNullOrWhiteSpace(statusDetail))
+                    statusDetail = psd.GetString() ?? "";
+
+                if (payment.TryGetProperty("date_of_expiration", out var exp))
+                    dateOfExpiration = ReadStringish(exp);
+
+                if (payment.TryGetProperty("expiration_time", out var expTime)
+                    && string.IsNullOrWhiteSpace(dateOfExpiration))
+                    dateOfExpiration = ReadStringish(expTime);
+
+                if (payment.TryGetProperty("payment_method", out var pm)
+                    && pm.ValueKind == JsonValueKind.Object)
+                {
+                    if (pm.TryGetProperty("id", out var pmid))
+                        methodId = pmid.GetString();
+                    if (pm.TryGetProperty("qr_code", out var qr))
+                        qrCode = qr.GetString();
+                    if (pm.TryGetProperty("qr_code_base64", out var qrb))
+                        qrBase64 = qrb.GetString();
+                    if (pm.TryGetProperty("ticket_url", out var tu))
+                        ticketUrl = tu.GetString();
+                }
+
+                // Usa o primeiro payment da order.
+                break;
+            }
         }
 
         return new MercadoPagoPaymentSnapshot(
-            id,
+            orderId,
+            payId,
             status,
             statusDetail,
             amount,
@@ -307,6 +341,17 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             methodId,
             qrCode,
             qrBase64,
-            ticketUrl);
+            ticketUrl,
+            dateOfExpiration);
+    }
+
+    private static decimal ParseDecimal(JsonElement el)
+    {
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetDecimal(out var d))
+            return d;
+        if (el.ValueKind == JsonValueKind.String
+            && decimal.TryParse(el.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var s))
+            return s;
+        return 0m;
     }
 }

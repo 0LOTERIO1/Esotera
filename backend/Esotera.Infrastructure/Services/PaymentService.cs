@@ -56,12 +56,24 @@ public class PaymentService : IPaymentService
         if (order.Status is OrderStatus.PaymentApproved or OrderStatus.Cancelled)
             throw new ConflictException("Este pedido não aceita novo pagamento.");
 
-        // Replay idempotente do mesmo pagamento
+        var methodId = (request.PaymentMethodId ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(methodId))
+            throw new ValidationException("paymentMethodId", "Informe o método de pagamento.");
+
+        // Fase 1 Orders API: somente Pix.
+        if (methodId is not "pix")
+        {
+            throw new ValidationException(
+                "paymentMethodId",
+                "Nesta fase somente Pix está disponível. Cartão e boleto em breve.");
+        }
+
+        // Replay idempotente da mesma order MP
         if (!string.IsNullOrWhiteSpace(order.PaymentIdempotencyKey)
             && string.Equals(order.PaymentIdempotencyKey, key, StringComparison.Ordinal)
-            && !string.IsNullOrWhiteSpace(order.MercadoPagoPaymentId))
+            && !string.IsNullOrWhiteSpace(order.MercadoPagoOrderId))
         {
-            var existing = await _mp.GetPaymentAsync(order.MercadoPagoPaymentId, cancellationToken);
+            var existing = await _mp.GetOrderAsync(order.MercadoPagoOrderId, cancellationToken);
             return MapResponse(order, existing);
         }
 
@@ -72,31 +84,9 @@ public class PaymentService : IPaymentService
                 "Já existe uma tentativa de pagamento para este pedido com outra chave de idempotência.");
         }
 
-        var methodId = (request.PaymentMethodId ?? "").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(methodId))
-            throw new ValidationException("paymentMethodId", "Informe o método de pagamento.");
-
-        var isPix = methodId is "pix";
-        var isCard = !isPix;
-
-        if (isCard && string.IsNullOrWhiteSpace(request.Token))
-            throw new ValidationException("token", "Token do cartão é obrigatório.");
-
-        if (isCard)
-        {
-            var installments = request.Installments ?? order.PaymentInstallments ?? 1;
-            if (installments is < 1 or > 2)
-                throw new ValidationException("installments", "Parcelas permitidas: 1 ou 2 sem juros.");
-        }
-
-        // Alinha método do pedido com o Brick (pix vs card)
-        if (isPix && order.PaymentMethod != PaymentMethod.Pix)
+        if (order.PaymentMethod != PaymentMethod.Pix)
             order.PaymentMethod = PaymentMethod.Pix;
-        if (isCard && order.PaymentMethod != PaymentMethod.Card)
-            order.PaymentMethod = PaymentMethod.Card;
-
-        var installmentsForMp = isPix ? 1 : (request.Installments ?? order.PaymentInstallments ?? 1);
-        order.PaymentInstallments = isCard ? installmentsForMp : null;
+        order.PaymentInstallments = null;
 
         var snapshot = await _mp.CreatePaymentAsync(
             new MercadoPagoCreatePaymentCommand(
@@ -107,10 +97,10 @@ public class PaymentService : IPaymentService
                     ? order.CustomerEmail
                     : request.PayerEmail.Trim(),
                 PayerCpf: order.CustomerCpf,
-                PaymentMethodId: methodId,
-                Token: isCard ? request.Token : null,
-                Installments: installmentsForMp,
-                IssuerId: request.IssuerId,
+                PaymentMethodId: "pix",
+                Token: null,
+                Installments: 1,
+                IssuerId: null,
                 NotificationUrl: _options.ResolveNotificationUrl()),
             key,
             cancellationToken);
@@ -118,12 +108,17 @@ public class PaymentService : IPaymentService
         ValidatePaymentMatchesOrder(order, snapshot);
 
         order.PaymentIdempotencyKey = key;
-        order.MercadoPagoPaymentId = snapshot.Id;
+        order.MercadoPagoOrderId = snapshot.OrderId;
+        order.MercadoPagoPaymentId = snapshot.TransactionPaymentId;
         order.MercadoPagoPaymentStatus = snapshot.Status;
-        order.PaymentStatus = MapPaymentStatus(snapshot.Status);
+        order.PaymentStatus = MapPaymentStatus(snapshot.Status, snapshot.StatusDetail);
         order.UpdatedAtUtc = DateTime.UtcNow;
 
-        ApplyStatusFromMercadoPago(order, snapshot.Status, "Pagamento criado no Mercado Pago");
+        ApplyStatusFromMercadoPago(
+            order,
+            snapshot.Status,
+            snapshot.StatusDetail,
+            "Order Pix criada no Mercado Pago");
 
         await _context.SaveChangesAsync(cancellationToken);
         return MapResponse(order, snapshot);
@@ -161,10 +156,10 @@ public class PaymentService : IPaymentService
             return;
         }
 
-        // Consulta segura na API — não confiar só no payload
-        var payment = await _mp.GetPaymentAsync(dataId, cancellationToken);
+        // Orders API: data.id é o ID da order (ORD…).
+        var mpOrder = await _mp.GetOrderAsync(dataId, cancellationToken);
 
-        if (!Guid.TryParse(payment.ExternalReference, out var orderId))
+        if (!Guid.TryParse(mpOrder.ExternalReference, out var orderId))
         {
             _logger.LogWarning("Webhook MP: external_reference inválido.");
             return;
@@ -180,29 +175,39 @@ public class PaymentService : IPaymentService
             return;
         }
 
-        ValidatePaymentMatchesOrder(order, payment);
+        ValidatePaymentMatchesOrder(order, mpOrder);
 
-        // Idempotência: mesmo payment id + mesmo status → no-op
-        if (string.Equals(order.MercadoPagoPaymentId, payment.Id, StringComparison.Ordinal)
-            && string.Equals(order.MercadoPagoPaymentStatus, payment.Status, StringComparison.OrdinalIgnoreCase)
-            && order.PaymentStatus == MapPaymentStatus(payment.Status)
-            && MatchesOrderStatus(order.Status, payment.Status))
+        var mappedPaymentStatus = MapPaymentStatus(mpOrder.Status, mpOrder.StatusDetail);
+
+        // Idempotência: mesma order + mesmo status → no-op
+        if (string.Equals(order.MercadoPagoOrderId, mpOrder.OrderId, StringComparison.Ordinal)
+            && string.Equals(order.MercadoPagoPaymentStatus, mpOrder.Status, StringComparison.OrdinalIgnoreCase)
+            && order.PaymentStatus == mappedPaymentStatus
+            && MatchesOrderStatus(order.Status, mpOrder.Status, mpOrder.StatusDetail))
         {
             return;
         }
 
-        order.MercadoPagoPaymentId = payment.Id;
-        order.MercadoPagoPaymentStatus = payment.Status;
-        order.PaymentStatus = MapPaymentStatus(payment.Status);
+        order.MercadoPagoOrderId = mpOrder.OrderId;
+        if (!string.IsNullOrWhiteSpace(mpOrder.TransactionPaymentId))
+            order.MercadoPagoPaymentId = mpOrder.TransactionPaymentId;
+        order.MercadoPagoPaymentStatus = mpOrder.Status;
+        order.PaymentStatus = mappedPaymentStatus;
         order.UpdatedAtUtc = DateTime.UtcNow;
 
-        ApplyStatusFromMercadoPago(order, payment.Status, $"Webhook MP: {payment.Status}");
+        ApplyStatusFromMercadoPago(
+            order,
+            mpOrder.Status,
+            mpOrder.StatusDetail,
+            $"Webhook MP order: {mpOrder.Status}/{mpOrder.StatusDetail}");
 
         await _context.SaveChangesAsync(cancellationToken);
         _logger.LogInformation(
-            "Pedido {OrderId} atualizado via webhook MP (status={Status}).",
+            "Pedido {OrderId} atualizado via webhook MP (OrderId={MpOrderId} Status={Status} StatusDetail={StatusDetail}).",
             order.Id,
-            payment.Status);
+            mpOrder.OrderId,
+            mpOrder.Status,
+            mpOrder.StatusDetail);
     }
 
     private void ValidatePaymentMatchesOrder(Domain.Entities.Order order, MercadoPagoPaymentSnapshot payment)
@@ -210,7 +215,8 @@ public class PaymentService : IPaymentService
         if (!string.Equals(payment.CurrencyId, Brl, StringComparison.OrdinalIgnoreCase))
             throw new ConflictException("Moeda do pagamento divergente.");
 
-        if (Math.Abs(payment.TransactionAmount - order.Total) > AmountTolerance)
+        if (payment.TransactionAmount > 0
+            && Math.Abs(payment.TransactionAmount - order.Total) > AmountTolerance)
             throw new ConflictException("Valor do pagamento divergente do pedido.");
 
         if (!string.IsNullOrWhiteSpace(payment.ExternalReference)
@@ -221,26 +227,17 @@ public class PaymentService : IPaymentService
     private void ApplyStatusFromMercadoPago(
         Domain.Entities.Order order,
         string mpStatus,
+        string? mpStatusDetail,
         string note)
     {
-        var normalized = mpStatus.Trim().ToLowerInvariant();
-        string? target = normalized switch
-        {
-            "approved" => OrderStatus.PaymentApproved,
-            "rejected" or "cancelled" => OrderStatus.Cancelled,
-            "refunded" or "charged_back" => OrderStatus.Cancelled,
-            "pending" or "in_process" or "in_mediation" => OrderStatus.AwaitingPayment,
-            _ => null
-        };
-
+        var target = ResolveEsoteraStatus(mpStatus, mpStatusDetail);
         if (target == null || order.Status == target)
             return;
 
-        // Não reabrir pedido cancelado para approved sem revisão manual admin
         if (order.Status == OrderStatus.Cancelled && target == OrderStatus.PaymentApproved)
         {
             _logger.LogWarning(
-                "Pedido {OrderId} está cancelado; approved do MP ignorado para transição automática.",
+                "Pedido {OrderId} está cancelado; approved/processed do MP ignorado para transição automática.",
                 order.Id);
             return;
         }
@@ -258,44 +255,71 @@ public class PaymentService : IPaymentService
         });
     }
 
-    private static bool MatchesOrderStatus(string orderStatus, string mpStatus) =>
-        mpStatus.Trim().ToLowerInvariant() switch
-        {
-            "approved" => orderStatus == OrderStatus.PaymentApproved,
-            "rejected" or "cancelled" or "refunded" or "charged_back" =>
-                orderStatus == OrderStatus.Cancelled,
-            "pending" or "in_process" or "in_mediation" =>
-                orderStatus == OrderStatus.AwaitingPayment,
-            _ => true
-        };
+    /// <summary>
+    /// action_required / waiting_transfer → aguardando pagamento;
+    /// processed / approved / accredited → pago.
+    /// </summary>
+    private static string? ResolveEsoteraStatus(string mpStatus, string? mpStatusDetail)
+    {
+        var status = (mpStatus ?? "").Trim().ToLowerInvariant();
+        var detail = (mpStatusDetail ?? "").Trim().ToLowerInvariant();
 
-    private static string MapPaymentStatus(string mpStatus) =>
-        mpStatus.Trim().ToLowerInvariant() switch
+        if (status is "processed" or "approved"
+            || detail is "accredited")
+            return OrderStatus.PaymentApproved;
+
+        if (status is "cancelled" or "canceled" or "expired" or "failed" or "refunded" or "charged_back"
+            || detail is "rejected" or "cancelled" or "canceled")
+            return OrderStatus.Cancelled;
+
+        if (status is "action_required" or "created" or "pending" or "in_process" or "in_mediation"
+            || detail is "waiting_transfer" or "pending_waiting_transfer")
+            return OrderStatus.AwaitingPayment;
+
+        return null;
+    }
+
+    private static bool MatchesOrderStatus(string orderStatus, string mpStatus, string? mpStatusDetail)
+    {
+        var target = ResolveEsoteraStatus(mpStatus, mpStatusDetail);
+        return target == null || orderStatus == target;
+    }
+
+    private static string MapPaymentStatus(string mpStatus, string? mpStatusDetail)
+    {
+        var resolved = ResolveEsoteraStatus(mpStatus, mpStatusDetail);
+        return resolved switch
         {
-            "approved" => "approved",
-            "rejected" => "rejected",
-            "cancelled" => "cancelled",
-            "refunded" => "refunded",
-            "charged_back" => "charged_back",
+            OrderStatus.PaymentApproved => "approved",
+            OrderStatus.Cancelled => "cancelled",
             _ => "pending"
         };
+    }
 
     private static CreatePaymentResponse MapResponse(
         Domain.Entities.Order order,
-        MercadoPagoPaymentSnapshot payment) =>
-        new(
+        MercadoPagoPaymentSnapshot payment)
+    {
+        var uiStatus = MapPaymentStatus(payment.Status, payment.StatusDetail);
+        var awaiting = uiStatus == "pending";
+        var message = uiStatus == "approved"
+            ? "Pagamento aprovado."
+            : awaiting
+                ? "Aguardando pagamento. Pix gerado — escaneie o QR Code ou use o código copia e cola."
+                : "Pagamento em processamento.";
+
+        return new(
             order.Id,
             order.OrderNumber,
             order.Total,
             Brl,
-            payment.Status,
-            payment.Id,
+            uiStatus,
+            payment.OrderId,
+            payment.TransactionPaymentId,
             payment.TicketUrl,
             payment.QrCode,
             payment.QrCodeBase64,
-            payment.Status.Equals("approved", StringComparison.OrdinalIgnoreCase)
-                ? "Pagamento aprovado."
-                : payment.PaymentMethodId == "pix"
-                    ? "Pix gerado. Escaneie o QR Code ou use o código copia e cola."
-                    : "Pagamento em processamento.");
+            payment.DateOfExpiration,
+            message);
+    }
 }

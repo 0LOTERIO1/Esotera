@@ -21,8 +21,9 @@ public class MercadoPagoWebhookController : ControllerBase
     }
 
     /// <summary>
-    /// Webhook Mercado Pago. URL de cadastro:
+    /// Webhook Mercado Pago (Orders API). URL de cadastro:
     /// https://esotera-api.onrender.com/api/webhooks/mercadopago
+    /// Evento: Order (Mercado Pago) — topic order.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> Receive(CancellationToken cancellationToken)

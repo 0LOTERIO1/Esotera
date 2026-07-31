@@ -51,9 +51,11 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.Property(x => x.PaymentMethod).HasMaxLength(20).IsRequired();
         builder.Property(x => x.PaymentStatus).HasMaxLength(50).IsRequired();
+        builder.Property(x => x.MercadoPagoOrderId).HasMaxLength(64);
         builder.Property(x => x.MercadoPagoPaymentId).HasMaxLength(64);
         builder.Property(x => x.MercadoPagoPaymentStatus).HasMaxLength(50);
         builder.Property(x => x.PaymentIdempotencyKey).HasMaxLength(64);
+        builder.HasIndex(x => x.MercadoPagoOrderId);
         builder.HasIndex(x => x.MercadoPagoPaymentId);
 
         builder.Property(x => x.CustomerName).HasMaxLength(200).IsRequired();

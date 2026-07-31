@@ -14,10 +14,12 @@ export type CreatePaymentApiResponse = {
   amount: number;
   currency: string;
   status: string;
+  mercadoPagoOrderId?: string | null;
   mercadoPagoPaymentId?: string | null;
   ticketUrl?: string | null;
   qrCode?: string | null;
   qrCodeBase64?: string | null;
+  dateOfExpiration?: string | null;
   message: string;
 };
 

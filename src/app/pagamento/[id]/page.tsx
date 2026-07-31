@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { MercadoPagoBrick } from "@/components/checkout/MercadoPagoBrick";
+import { SandboxPaymentCheckout } from "@/components/checkout/SandboxPaymentCheckout";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { isRealPaymentEnabled } from "@/config/storeMode";
 import { isApiMode } from "@/config/dataMode";
@@ -12,7 +13,6 @@ import {
   paymentsApi,
   type PaymentEnvironmentConfig,
 } from "@/services/api/paymentsApi";
-import { createIdempotencyKey } from "@/utils/orderIdempotency";
 import { formatCurrency } from "@/utils/format";
 import { ApiError } from "@/services/api/apiClient";
 import type { Order } from "@/types";
@@ -37,9 +37,6 @@ export default function PagarPedidoPage() {
   const [mpConfig, setMpConfig] = useState<PaymentEnvironmentConfig | null>(
     null,
   );
-  const [sandboxLoading, setSandboxLoading] = useState(false);
-  const [sandboxError, setSandboxError] = useState<string | null>(null);
-  const sandboxInFlight = useRef(false);
 
   const sandboxMode = isSandboxTestMode(mpConfig);
   const sandboxAmount = mpConfig?.sandboxPixAmount ?? 50;
@@ -85,8 +82,7 @@ export default function PagarPedidoPage() {
         }
         setOrder(data);
 
-        const sandboxOk =
-          cfgResult.ok && isSandboxTestMode(cfgResult.cfg);
+        const sandboxOk = cfgResult.ok && isSandboxTestMode(cfgResult.cfg);
         if (!isRealPaymentEnabled() && !sandboxOk) {
           setError(
             "Pagamento real não está ativo neste ambiente. Configure a Public Key ou use o modo de homologação.",
@@ -119,43 +115,6 @@ export default function PagarPedidoPage() {
     return () => window.clearInterval(id);
   }, [order, orderId, router, sandboxMode]);
 
-  const handleSandboxPix = useCallback(async () => {
-    if (sandboxInFlight.current || sandboxLoading) return;
-    sandboxInFlight.current = true;
-    setSandboxLoading(true);
-    setSandboxError(null);
-    setPixCode(null);
-    setPixQr(null);
-    setPixLabel(null);
-    try {
-      const result = await paymentsApi.createSandboxPixTest(
-        createIdempotencyKey(),
-      );
-      if (result.qrCode) setPixCode(result.qrCode);
-      if (result.qrCodeBase64) setPixQr(result.qrCodeBase64);
-      setPixLabel(
-        `Pix de teste de ${formatCurrency(result.amount)} — não é o total do pedido`,
-      );
-      if (!result.qrCode && !result.qrCodeBase64) {
-        setSandboxError(
-          result.message ||
-            "Pix de teste criado, mas o QR Code não veio na resposta.",
-        );
-      }
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.userMessage
-          : err instanceof Error
-            ? err.message
-            : "Falha ao gerar Pix de teste.";
-      setSandboxError(message);
-    } finally {
-      sandboxInFlight.current = false;
-      setSandboxLoading(false);
-    }
-  }, [sandboxLoading]);
-
   if (loading) return <LoadingState label="Carregando pagamento…" />;
 
   if (error || !order) {
@@ -175,19 +134,16 @@ export default function PagarPedidoPage() {
     );
   }
 
-  // Em Test+sandbox: só fluxo isolado (sem Brick / sem "Pagar" comercial).
-  // Em Production: Brick comercial (somente Pix).
+  // Test+sandbox: UI estilo MP sem Brick comercial.
+  // Production: Brick comercial (valor real do pedido).
   const showCommercialBrick = !sandboxMode && isRealPaymentEnabled();
 
   return (
     <div className="mx-auto max-w-lg px-4 py-12 sm:px-6">
       <h1 className="font-serif text-3xl text-esotera-secondary">Pagar pedido</h1>
       <p className="mt-2 text-sm text-esotera-muted">
-        Pedido {order.orderNumber} · total do pedido{" "}
-        <span className="font-medium text-esotera-text">
-          {formatCurrency(order.total)}
-        </span>
-        . O status só será confirmado após o Mercado Pago (webhook/consulta).
+        Pedido {order.orderNumber}. O status só será confirmado após o Mercado
+        Pago (webhook/consulta) — o retorno do navegador não marca como pago.
       </p>
 
       {sandboxMode ? (
@@ -195,7 +151,7 @@ export default function PagarPedidoPage() {
           role="status"
           className="mt-6 rounded-md border border-amber-800/50 bg-amber-50 px-4 py-3 text-sm text-amber-950"
         >
-          Ambiente de teste — nenhuma cobrança real será realizada
+          Ambiente de teste — nenhuma cobrança real será realizada.
         </div>
       ) : null}
 
@@ -205,54 +161,28 @@ export default function PagarPedidoPage() {
         </p>
       ) : null}
 
-      <div className="mt-6 space-y-2 text-sm text-esotera-muted">
-        <p className="font-medium text-esotera-text">Formas de pagamento</p>
-        <ul className="space-y-1">
-          <li>Pix — {sandboxMode ? "teste isolado disponível" : "disponível"}</li>
-          <li className="opacity-60">Cartão — Em breve</li>
-          <li className="opacity-60">Boleto — Em breve</li>
-        </ul>
-      </div>
-
       {sandboxMode ? (
-        <div className="mt-6 space-y-4 rounded-md border-2 border-esotera-secondary bg-esotera-surface px-4 py-5">
-          <p className="text-sm text-esotera-text">
-            Use o Pix oficial de teste do Mercado Pago (
-            {formatCurrency(sandboxAmount)}). Este valor{" "}
-            <strong className="font-semibold">não</strong> é o total do seu
-            pedido ({formatCurrency(order.total)}), não altera o pedido, não
-            consome cupom e não marca como pago.
-          </p>
-          <button
-            type="button"
-            disabled={sandboxLoading}
-            aria-busy={sandboxLoading}
-            onClick={() => void handleSandboxPix()}
-            className="w-full rounded-md bg-esotera-secondary px-4 py-3 text-sm font-medium text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {sandboxLoading
-              ? "Gerando Pix de teste…"
-              : `Gerar Pix de teste de ${formatCurrency(sandboxAmount)}`}
-          </button>
-          <p className="text-xs text-esotera-muted">
-            O pagamento comercial deste pedido fica desabilitado enquanto o
-            Mercado Pago estiver em ambiente de teste.
-          </p>
-          {sandboxError ? (
-            <p className="text-sm text-esotera-error" role="alert">
-              {sandboxError}
-            </p>
-          ) : null}
+        <div className="mt-6">
+          <SandboxPaymentCheckout
+            orderNumber={order.orderNumber ?? order.id}
+            orderTotal={order.total}
+            sandboxAmount={sandboxAmount}
+          />
         </div>
       ) : null}
 
       {showCommercialBrick ? (
         <div className="mt-8">
+          <p className="mb-4 text-sm text-esotera-muted">
+            Total do pedido:{" "}
+            <span className="font-medium text-esotera-text">
+              {formatCurrency(order.total)}
+            </span>
+          </p>
           <MercadoPagoBrick
             orderId={order.id}
             amount={order.total}
             payerEmail={order.upSellerExport?.customerEmail}
-            isTestEnvironment={false}
             onPaid={() => router.replace(`/pedido-confirmado/${order.id}`)}
             onPending={({ qrCode, qrCodeBase64 }) => {
               if (qrCode) setPixCode(qrCode);
@@ -269,7 +199,7 @@ export default function PagarPedidoPage() {
         </p>
       ) : null}
 
-      {pixQr || pixCode ? (
+      {!sandboxMode && (pixQr || pixCode) ? (
         <div className="mt-8 space-y-3 rounded-md border border-esotera-border p-4">
           <p className="text-sm font-medium text-esotera-text">
             {pixLabel ?? "Pix"}
@@ -282,7 +212,7 @@ export default function PagarPedidoPage() {
                   ? pixQr
                   : `data:image/png;base64,${pixQr}`
               }
-              alt="QR Code Pix de teste"
+              alt="QR Code Pix"
               className="mx-auto h-48 w-48"
             />
           ) : null}
@@ -295,15 +225,6 @@ export default function PagarPedidoPage() {
                 rows={4}
                 value={pixCode}
               />
-              <button
-                type="button"
-                className="mt-2 text-sm text-esotera-primary underline"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(pixCode);
-                }}
-              >
-                Copiar código
-              </button>
             </div>
           ) : null}
         </div>

@@ -99,6 +99,30 @@ public class NewsletterAndPasswordResetTests : IClassFixture<CustomWebApplicatio
     }
 
     [Fact]
+    public async Task Newsletter_Subscribe_SendsConfirmationEmail_WithUnsubscribeLink()
+    {
+        var email = $"newsmail{Guid.NewGuid():N}@test.com";
+
+        var sub = await _client.PostAsJsonAsync("/api/newsletter/subscribe",
+            new SubscribeNewsletterRequest(email, true));
+        sub.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var scope = _factory.Services.CreateScope();
+        var emailSender = scope.ServiceProvider.GetRequiredService<CapturingEmailSender>();
+        emailSender.Sent.Should().Contain(m =>
+            m.To == email && m.HtmlBody.Contains("/newsletter/descadastrar?token="));
+
+        var html = emailSender.Sent.Last(m => m.To == email).HtmlBody;
+        const string marker = "token=";
+        var tokenStart = html.IndexOf(marker, StringComparison.Ordinal) + marker.Length;
+        var tokenEnd = html.IndexOfAny(['"', '&', '<'], tokenStart);
+        var token = Uri.UnescapeDataString(html[tokenStart..tokenEnd]);
+
+        var unsub = await _client.GetAsync($"/api/newsletter/unsubscribe?token={Uri.EscapeDataString(token)}");
+        unsub.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task AdminNewsletter_RequiresAdmin()
     {
         var customerToken = await TestHelpers.GetCustomerTokenAsync(_client);

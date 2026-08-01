@@ -42,6 +42,10 @@ public static class DependencyInjection
             options.FromName = FirstNonEmpty(options.FromName, configuration["EMAIL_FROM_NAME"], configuration["Email:FromName"])
                 ?? "Esotera";
             options.FrontendBaseUrl = FirstNonEmpty(options.FrontendBaseUrl, configuration["FRONTEND_BASE_URL"], configuration["Email:FrontendBaseUrl"]);
+            options.AdminNotifyEmail = FirstNonEmpty(
+                options.AdminNotifyEmail,
+                configuration["EMAIL_ADMIN_NOTIFY"],
+                configuration["Email:AdminNotifyEmail"]);
             if (int.TryParse(configuration["EMAIL_SMTP_PORT"] ?? configuration["Email:SmtpPort"], out var port))
                 options.SmtpPort = port;
             var ssl = ParseBool(configuration["EMAIL_SMTP_USE_SSL"] ?? configuration["Email:SmtpUseSsl"]);
@@ -102,7 +106,26 @@ public static class DependencyInjection
         });
 
         services.AddSingleton<IClock, SystemClock>();
-        services.AddScoped<ISimulatedShippingService, SimulatedShippingService>();
+        services.Configure<MelhorEnvioOptions>(options =>
+        {
+            configuration.GetSection(MelhorEnvioOptions.SectionName).Bind(options);
+            options.Enabled = ParseBool(configuration["MELHOR_ENVIO_ENABLED"] ?? configuration["MelhorEnvio:Enabled"]) ?? options.Enabled;
+            options.ClientId = FirstNonEmpty(options.ClientId, configuration["MELHOR_ENVIO_CLIENT_ID"], configuration["MelhorEnvio:ClientId"]);
+            options.ClientSecret = FirstNonEmpty(options.ClientSecret, configuration["MELHOR_ENVIO_CLIENT_SECRET"], configuration["MelhorEnvio:ClientSecret"]);
+            options.Environment = FirstNonEmpty(options.Environment, configuration["MELHOR_ENVIO_ENVIRONMENT"], configuration["MelhorEnvio:Environment"])
+                ?? "sandbox";
+        });
+        services.Configure<J3ShippingOptions>(options =>
+        {
+            configuration.GetSection(J3ShippingOptions.SectionName).Bind(options);
+            options.Enabled = ParseBool(configuration["J3_ENABLED"] ?? configuration["J3:Enabled"]) ?? options.Enabled;
+            options.ApiUrl = FirstNonEmpty(options.ApiUrl, configuration["J3_API_URL"], configuration["J3:ApiUrl"]);
+            options.ApiToken = FirstNonEmpty(options.ApiToken, configuration["J3_API_TOKEN"], configuration["J3:ApiToken"]);
+        });
+        services.AddScoped<SimulatedShippingService>();
+        services.AddScoped<ShippingQuoteService>();
+        services.AddScoped<IShippingQuoteService>(sp => sp.GetRequiredService<ShippingQuoteService>());
+        services.AddScoped<ISimulatedShippingService>(sp => sp.GetRequiredService<ShippingQuoteService>());
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
 

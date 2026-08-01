@@ -7,8 +7,9 @@ using Esotera.Domain.Enums;
 namespace Esotera.Infrastructure.Services;
 
 /// <summary>
-/// Frete simulado (J3 + Melhor Envio). Consome StoreSettings persistidas.
+/// Frete simulado (J3 + Melhor Envio com valores fixos). Consome StoreSettings.
 /// TODO: substituir faixas J3 pela cobertura oficial quando fornecida.
+/// Preferir <see cref="IShippingQuoteService"/> / <see cref="ShippingQuoteService"/> no DI.
 /// </summary>
 public interface ISimulatedShippingService
 {
@@ -20,7 +21,7 @@ public interface ISimulatedShippingService
         StoreSettings settings);
 }
 
-public sealed class SimulatedShippingService : ISimulatedShippingService
+public sealed class SimulatedShippingService : ISimulatedShippingService, IShippingQuoteService
 {
     private readonly IClock _clock;
 

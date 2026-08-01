@@ -1,19 +1,32 @@
 using Esotera.Application.DTOs.Newsletter;
 using Esotera.Application.Exceptions;
 using Esotera.Application.Interfaces;
+using Esotera.Application.Options;
 using Esotera.Domain.Entities;
 using Esotera.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Esotera.Infrastructure.Services;
 
 public class NewsletterService : INewsletterService
 {
     private readonly EsoteraDbContext _context;
+    private readonly IEmailSender _emailSender;
+    private readonly EmailOptions _emailOptions;
+    private readonly ILogger<NewsletterService> _logger;
 
-    public NewsletterService(EsoteraDbContext context)
+    public NewsletterService(
+        EsoteraDbContext context,
+        IEmailSender emailSender,
+        IOptions<EmailOptions> emailOptions,
+        ILogger<NewsletterService> logger)
     {
         _context = context;
+        _emailSender = emailSender;
+        _emailOptions = emailOptions.Value;
+        _logger = logger;
     }
 
     public async Task<NewsletterMessageResponse> SubscribeAsync(SubscribeNewsletterRequest request)
@@ -29,6 +42,8 @@ public class NewsletterService : INewsletterService
             .FirstOrDefaultAsync(s => s.Email == email);
 
         var now = DateTime.UtcNow;
+        string plainToken;
+        bool reactivated;
 
         if (existing != null)
         {
@@ -39,27 +54,42 @@ public class NewsletterService : INewsletterService
             existing.ConsentAtUtc = now;
             existing.UnsubscribedAtUtc = null;
             existing.UpdatedAtUtc = now;
-            // Novo token de descadastramento a cada reativação
-            var plain = SecureToken.GenerateUrlSafeToken();
-            existing.UnsubscribeTokenHash = SecureToken.Sha256Hex(plain);
+            plainToken = SecureToken.GenerateUrlSafeToken();
+            existing.UnsubscribeTokenHash = SecureToken.Sha256Hex(plainToken);
             await _context.SaveChangesAsync();
-            return new NewsletterMessageResponse("Inscrição reativada com sucesso. Obrigado!");
+            reactivated = true;
+        }
+        else
+        {
+            plainToken = SecureToken.GenerateUrlSafeToken();
+            _context.NewsletterSubscriptions.Add(new NewsletterSubscription
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                IsActive = true,
+                ConsentAtUtc = now,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+                UnsubscribeTokenHash = SecureToken.Sha256Hex(plainToken)
+            });
+            await _context.SaveChangesAsync();
+            reactivated = false;
         }
 
-        var token = SecureToken.GenerateUrlSafeToken();
-        _context.NewsletterSubscriptions.Add(new NewsletterSubscription
-        {
-            Id = Guid.NewGuid(),
-            Email = email,
-            IsActive = true,
-            ConsentAtUtc = now,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
-            UnsubscribeTokenHash = SecureToken.Sha256Hex(token)
-        });
-        await _context.SaveChangesAsync();
+        await TrySendSubscriptionEmailsAsync(email, plainToken, reactivated);
 
-        return new NewsletterMessageResponse("Inscrição realizada com sucesso. Obrigado!");
+        if (_emailSender.IsConfigured)
+        {
+            return new NewsletterMessageResponse(
+                reactivated
+                    ? "Inscrição reativada. Enviamos um e-mail de confirmação."
+                    : "Inscrição realizada. Enviamos um e-mail de confirmação.");
+        }
+
+        return new NewsletterMessageResponse(
+            reactivated
+                ? "Inscrição reativada com sucesso. Obrigado!"
+                : "Inscrição realizada com sucesso. Obrigado!");
     }
 
     public async Task<NewsletterMessageResponse> UnsubscribeAsync(string token)
@@ -140,6 +170,55 @@ public class NewsletterService : INewsletterService
                 .AppendLine();
         }
         return sb.ToString();
+    }
+
+    private async Task TrySendSubscriptionEmailsAsync(string email, string plainToken, bool reactivated)
+    {
+        var baseUrl = (_emailOptions.FrontendBaseUrl ?? "http://localhost:3000").TrimEnd('/');
+        var unsubUrl = $"{baseUrl}/newsletter/descadastrar?token={Uri.EscapeDataString(plainToken)}";
+
+        var subject = reactivated
+            ? "Inscrição reativada — Newsletter Esotera"
+            : "Confirmação de inscrição — Newsletter Esotera";
+
+        var html = $"""
+            <p>Olá,</p>
+            <p>Sua inscrição na newsletter da Esotera foi {(reactivated ? "reativada" : "confirmada")}.</p>
+            <p>Você receberá novidades e lançamentos por este e-mail.</p>
+            <p><a href="{unsubUrl}">Descadastrar-se</a></p>
+            <p>Esotera</p>
+            """;
+
+        try
+        {
+            await _emailSender.SendAsync(new EmailMessage(
+                email,
+                subject,
+                html,
+                $"Inscrição na newsletter Esotera confirmada. Para sair: {unsubUrl}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao enviar confirmação de newsletter para inscrito.");
+        }
+
+        var admin = _emailOptions.AdminNotifyEmail?.Trim();
+        if (string.IsNullOrWhiteSpace(admin))
+            return;
+
+        try
+        {
+            await _emailSender.SendAsync(new EmailMessage(
+                admin,
+                $"Nova inscrição newsletter — {email}",
+                $"<p>Novo e-mail inscrito na newsletter: <strong>{System.Net.WebUtility.HtmlEncode(email)}</strong></p>" +
+                $"<p>{(reactivated ? "Reativação" : "Nova inscrição")}.</p>",
+                $"Nova inscrição newsletter: {email}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao notificar admin sobre inscrição na newsletter.");
+        }
     }
 
     private static string Escape(string value)

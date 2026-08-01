@@ -10,9 +10,10 @@ type BrandLogoProps = {
   href?: string | null;
 };
 
+/** Proporção da logo processada (~1013×248). */
 const sizes = {
-  dark: { width: 168, height: 40 },
-  white: { width: 168, height: 40 },
+  dark: { width: 200, height: 49 },
+  white: { width: 200, height: 49 },
 };
 
 export function BrandLogo({
@@ -34,8 +35,8 @@ export function BrandLogo({
       width={width}
       height={height}
       priority={priority}
-      className={`h-8 w-auto sm:h-9 ${className}`}
-      sizes="(max-width: 640px) 140px, 168px"
+      className={`h-7 w-auto sm:h-8 ${className}`}
+      sizes="(max-width: 640px) 140px, 180px"
     />
   );
 

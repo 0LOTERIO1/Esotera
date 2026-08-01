@@ -15,6 +15,12 @@ public class EmailOptions
     /// <summary>Base URL do frontend (ex.: https://esotera.vercel.app) para montar links.</summary>
     public string? FrontendBaseUrl { get; set; }
 
+    /// <summary>
+    /// Opcional: e-mail do admin para aviso de nova inscrição na newsletter.
+    /// Só envia se SMTP estiver configurado e este valor preenchido.
+    /// </summary>
+    public string? AdminNotifyEmail { get; set; }
+
     public bool IsSmtpConfigured =>
         Enabled
         && !string.IsNullOrWhiteSpace(SmtpHost)

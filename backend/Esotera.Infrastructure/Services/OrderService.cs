@@ -21,12 +21,12 @@ public class OrderService : IOrderService
 
     private readonly EsoteraDbContext _context;
     private readonly ICouponService _couponService;
-    private readonly ISimulatedShippingService _shippingService;
+    private readonly IShippingQuoteService _shippingService;
 
     public OrderService(
         EsoteraDbContext context,
         ICouponService couponService,
-        ISimulatedShippingService shippingService)
+        IShippingQuoteService shippingService)
     {
         _context = context;
         _couponService = couponService;

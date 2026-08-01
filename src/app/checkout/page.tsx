@@ -15,9 +15,9 @@ import { CheckoutAddressStep } from "@/components/checkout/CheckoutAddressStep";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
-  mockShippingService,
+  quoteShippingSafe,
   qualifiesForFreeShipping,
-} from "@/services/shipping/mockShippingService";
+} from "@/services/shipping/shippingService";
 import type { PaymentMethod, SavedAddress, ShippingOption } from "@/types";
 import { Price } from "@/components/ui/Price";
 import { useToastStore } from "@/stores/toastStore";
@@ -123,32 +123,33 @@ export default function CheckoutPage() {
     setShippingError(null);
 
     window.setTimeout(() => {
-      try {
-        const options = mockShippingService.quoteShipping({
-          cep: selectedAddress.cep,
-          state: selectedAddress.state,
-          productsTotalAfterDiscount: productsTotal,
-          settings,
-        });
-        setShippingOptions(options);
-        setSelectedShippingId((prev) => {
-          if (prev && options.some((o) => o.id === prev)) return prev;
-          return options[0]?.id ?? null;
-        });
-        if (!options.length) {
+      void (async () => {
+        try {
+          const result = await quoteShippingSafe({
+            cep: selectedAddress.cep,
+            state: selectedAddress.state,
+            productsTotalAfterDiscount: productsTotal,
+            settings,
+          });
+          // Falha de cotação: opções vazias — nunca inventar preço no checkout.
+          setShippingOptions(result.options);
+          setSelectedShippingId((prev) => {
+            if (prev && result.options.some((o) => o.id === prev)) return prev;
+            return result.options[0]?.id ?? null;
+          });
           setShippingError(
-            "Nenhuma modalidade disponível para este endereço. Tente outro CEP ou tente novamente.",
+            result.ok ? null : (result.errorMessage ?? "Não foi possível calcular o frete."),
           );
+        } catch {
+          setShippingOptions([]);
+          setSelectedShippingId(null);
+          setShippingError(
+            "Não foi possível calcular o frete. Tente novamente.",
+          );
+        } finally {
+          setShippingLoading(false);
         }
-      } catch {
-        setShippingOptions([]);
-        setSelectedShippingId(null);
-        setShippingError(
-          "Não foi possível calcular o frete. Tente novamente.",
-        );
-      } finally {
-        setShippingLoading(false);
-      }
+      })();
     }, 200);
   }, [selectedAddress, productsTotal, settings]);
 

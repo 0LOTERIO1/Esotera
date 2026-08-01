@@ -41,6 +41,11 @@ export const defaultStoreSettings: StoreSettings = {
 /**
  * TODO: substituir por cobertura oficial J3 quando fornecida pelo cliente.
  * Faixas simuladas apenas para demonstração — NÃO são cobertura oficial.
+ *
+ * Para ativar Melhor Envio / J3 reais (futuro):
+ * - Backend: MELHOR_ENVIO_ENABLED + CLIENT_ID/SECRET; J3_ENABLED + API_URL/TOKEN
+ * - Cobertura oficial de CEPs J3, tabelas/serviços Melhor Envio, origem de envio
+ * - Até lá, checkout e pedidos usam cotação simulada (valores fixos por UF)
  */
 export const simulatedJ3CepRanges: Array<{ start: string; end: string }> = [
   { start: "01000000", end: "05999999" },

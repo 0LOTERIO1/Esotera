@@ -19,27 +19,30 @@ public class NewsletterController : ControllerBase
     [HttpPost("subscribe")]
     [EnableRateLimiting("auth")]
     public async Task<ActionResult<NewsletterMessageResponse>> Subscribe(
-        [FromBody] SubscribeNewsletterRequest request)
+        [FromBody] SubscribeNewsletterRequest request,
+        CancellationToken cancellationToken)
     {
-        var result = await _newsletter.SubscribeAsync(request);
+        var result = await _newsletter.SubscribeAsync(request, cancellationToken);
         return Ok(result);
     }
 
     [HttpPost("unsubscribe")]
     [EnableRateLimiting("auth")]
     public async Task<ActionResult<NewsletterMessageResponse>> Unsubscribe(
-        [FromBody] UnsubscribeNewsletterRequest request)
+        [FromBody] UnsubscribeNewsletterRequest request,
+        CancellationToken cancellationToken)
     {
-        var result = await _newsletter.UnsubscribeAsync(request.Token);
+        var result = await _newsletter.UnsubscribeAsync(request.Token, cancellationToken);
         return Ok(result);
     }
 
     [HttpGet("unsubscribe")]
     [EnableRateLimiting("auth")]
     public async Task<ActionResult<NewsletterMessageResponse>> UnsubscribeGet(
-        [FromQuery] string token)
+        [FromQuery] string token,
+        CancellationToken cancellationToken)
     {
-        var result = await _newsletter.UnsubscribeAsync(token);
+        var result = await _newsletter.UnsubscribeAsync(token, cancellationToken);
         return Ok(result);
     }
 }

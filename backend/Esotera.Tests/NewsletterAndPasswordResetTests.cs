@@ -123,6 +123,27 @@ public class NewsletterAndPasswordResetTests : IClassFixture<CustomWebApplicatio
     }
 
     [Fact]
+    public async Task Newsletter_Subscribe_WhenSmtpTimesOut_StillReturnsOk_WithClearMessage()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var emailSender = scope.ServiceProvider.GetRequiredService<CapturingEmailSender>();
+        emailSender.FailNextWithTimeout = true;
+
+        var email = $"newstimeout{Guid.NewGuid():N}@test.com";
+        var sub = await _client.PostAsJsonAsync("/api/newsletter/subscribe",
+            new SubscribeNewsletterRequest(email, true));
+        sub.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await sub.Content.ReadFromJsonAsync<NewsletterMessageResponse>(JsonOptions);
+        body!.EmailSent.Should().BeFalse();
+        body.Message.Should().Contain("não foi possível enviar o e-mail");
+
+        // Inscrição persistida (não reenvia / não duplica como insert).
+        var dup = await _client.PostAsJsonAsync("/api/newsletter/subscribe",
+            new SubscribeNewsletterRequest(email, true));
+        dup.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task AdminNewsletter_RequiresAdmin()
     {
         var customerToken = await TestHelpers.GetCustomerTokenAsync(_client);

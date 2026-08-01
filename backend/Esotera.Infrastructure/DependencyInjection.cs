@@ -50,6 +50,13 @@ public static class DependencyInjection
                 options.SmtpPort = port;
             var ssl = ParseBool(configuration["EMAIL_SMTP_USE_SSL"] ?? configuration["Email:SmtpUseSsl"]);
             if (ssl.HasValue) options.SmtpUseSsl = ssl.Value;
+            if (int.TryParse(
+                    configuration["EMAIL_SMTP_TIMEOUT_SECONDS"] ?? configuration["Email:SmtpTimeoutSeconds"],
+                    out var smtpTimeout)
+                && smtpTimeout > 0)
+            {
+                options.SmtpTimeoutSeconds = Math.Clamp(smtpTimeout, 3, 60);
+            }
         });
 
         services.Configure<MercadoPagoOptions>(options =>

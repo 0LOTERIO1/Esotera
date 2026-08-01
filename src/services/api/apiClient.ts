@@ -136,6 +136,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       response = await fetch(url, { ...init, headers });
     } catch (error) {
       lastNetworkError = error;
+      if (
+        (error instanceof DOMException && error.name === "AbortError") ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
+        throw new ApiError(
+          0,
+          "Tempo esgotado",
+          "A requisição demorou demais. Se acabou de se inscrever, a inscrição pode já ter sido salva.",
+        );
+      }
       // Cold start / rede: uma nova tentativa após breve espera.
       if (attempt < maxAttempts) {
         await sleep(1500);

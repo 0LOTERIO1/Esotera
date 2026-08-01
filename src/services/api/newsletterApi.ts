@@ -1,6 +1,6 @@
 import { apiClient } from "./apiClient";
 
-export type NewsletterMessage = { message: string };
+export type NewsletterMessage = { message: string; emailSent?: boolean };
 
 export type NewsletterSubscription = {
   id: string;
@@ -12,13 +12,22 @@ export type NewsletterSubscription = {
   unsubscribedAtUtc?: string | null;
 };
 
+/** Timeout do cliente — alinhado ao SMTP (~15s) + margem de rede. */
+const SUBSCRIBE_TIMEOUT_MS = 25_000;
+
 export const newsletterApi = {
-  subscribe(email: string, consent: boolean) {
-    return apiClient.post<NewsletterMessage>(
-      "/api/newsletter/subscribe",
-      { email, consent },
-      { auth: false },
-    );
+  async subscribe(email: string, consent: boolean): Promise<NewsletterMessage> {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), SUBSCRIBE_TIMEOUT_MS);
+    try {
+      return await apiClient.post<NewsletterMessage>(
+        "/api/newsletter/subscribe",
+        { email, consent },
+        { auth: false, signal: controller.signal },
+      );
+    } finally {
+      window.clearTimeout(timer);
+    }
   },
 
   unsubscribe(token: string) {

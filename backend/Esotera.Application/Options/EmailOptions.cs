@@ -21,6 +21,12 @@ public class EmailOptions
     /// </summary>
     public string? AdminNotifyEmail { get; set; }
 
+    /// <summary>
+    /// Timeout do SmtpClient e do envio (segundos). Evita request pendente no Render
+    /// quando smtp.gmail.com:587 está bloqueado ou lento.
+    /// </summary>
+    public int SmtpTimeoutSeconds { get; set; } = 15;
+
     public bool IsSmtpConfigured =>
         Enabled
         && !string.IsNullOrWhiteSpace(SmtpHost)

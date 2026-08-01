@@ -29,7 +29,9 @@ public class NewsletterService : INewsletterService
         _logger = logger;
     }
 
-    public async Task<NewsletterMessageResponse> SubscribeAsync(SubscribeNewsletterRequest request)
+    public async Task<NewsletterMessageResponse> SubscribeAsync(
+        SubscribeNewsletterRequest request,
+        CancellationToken cancellationToken = default)
     {
         if (!request.Consent)
             throw new ValidationException("consent", "É necessário consentir em receber comunicações.");
@@ -39,7 +41,7 @@ public class NewsletterService : INewsletterService
             throw new ValidationException("email", "Informe um e-mail válido.");
 
         var existing = await _context.NewsletterSubscriptions
-            .FirstOrDefaultAsync(s => s.Email == email);
+            .FirstOrDefaultAsync(s => s.Email == email, cancellationToken);
 
         var now = DateTime.UtcNow;
         string plainToken;
@@ -56,7 +58,7 @@ public class NewsletterService : INewsletterService
             existing.UpdatedAtUtc = now;
             plainToken = SecureToken.GenerateUrlSafeToken();
             existing.UnsubscribeTokenHash = SecureToken.Sha256Hex(plainToken);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             reactivated = true;
         }
         else
@@ -72,34 +74,52 @@ public class NewsletterService : INewsletterService
                 UpdatedAtUtc = now,
                 UnsubscribeTokenHash = SecureToken.Sha256Hex(plainToken)
             });
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             reactivated = false;
         }
 
-        await TrySendSubscriptionEmailsAsync(email, plainToken, reactivated);
+        // Persistência já concluída — e-mail nunca pode impedir a resposta HTTP.
+        var confirmationSent = await TrySendSubscriptionEmailsAsync(
+            email,
+            plainToken,
+            reactivated,
+            cancellationToken);
 
-        if (_emailSender.IsConfigured)
+        if (!_emailSender.IsConfigured)
+        {
+            return new NewsletterMessageResponse(
+                reactivated
+                    ? "Inscrição reativada com sucesso. Obrigado!"
+                    : "Inscrição realizada com sucesso. Obrigado!",
+                EmailSent: false);
+        }
+
+        if (confirmationSent)
         {
             return new NewsletterMessageResponse(
                 reactivated
                     ? "Inscrição reativada. Enviamos um e-mail de confirmação."
-                    : "Inscrição realizada. Enviamos um e-mail de confirmação.");
+                    : "Inscrição realizada. Enviamos um e-mail de confirmação.",
+                EmailSent: true);
         }
 
         return new NewsletterMessageResponse(
             reactivated
-                ? "Inscrição reativada com sucesso. Obrigado!"
-                : "Inscrição realizada com sucesso. Obrigado!");
+                ? "Inscrição reativada com sucesso, mas não foi possível enviar o e-mail de confirmação. Tente novamente mais tarde."
+                : "Inscrição realizada com sucesso, mas não foi possível enviar o e-mail de confirmação. Tente novamente mais tarde.",
+            EmailSent: false);
     }
 
-    public async Task<NewsletterMessageResponse> UnsubscribeAsync(string token)
+    public async Task<NewsletterMessageResponse> UnsubscribeAsync(
+        string token,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(token))
             throw new ValidationException("token", "Token inválido.");
 
         var hash = SecureToken.Sha256Hex(token.Trim());
         var sub = await _context.NewsletterSubscriptions
-            .FirstOrDefaultAsync(s => s.UnsubscribeTokenHash == hash);
+            .FirstOrDefaultAsync(s => s.UnsubscribeTokenHash == hash, cancellationToken);
 
         if (sub == null)
             throw new NotFoundException("Inscrição", token);
@@ -111,7 +131,7 @@ public class NewsletterService : INewsletterService
         sub.IsActive = false;
         sub.UnsubscribedAtUtc = now;
         sub.UpdatedAtUtc = now;
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         return new NewsletterMessageResponse("Você foi descadastrado da newsletter.");
     }
@@ -120,7 +140,8 @@ public class NewsletterService : INewsletterService
         string? search,
         bool? isActive,
         int skip = 0,
-        int take = 100)
+        int take = 100,
+        CancellationToken cancellationToken = default)
     {
         take = Math.Clamp(take, 1, 500);
         skip = Math.Max(0, skip);
@@ -136,7 +157,7 @@ public class NewsletterService : INewsletterService
         if (isActive.HasValue)
             query = query.Where(x => x.IsActive == isActive.Value);
 
-        var total = await query.CountAsync();
+        var total = await query.CountAsync(cancellationToken);
         var items = await query
             .OrderByDescending(x => x.CreatedAtUtc)
             .Skip(skip)
@@ -149,14 +170,17 @@ public class NewsletterService : INewsletterService
                 x.CreatedAtUtc,
                 x.UpdatedAtUtc,
                 x.UnsubscribedAtUtc))
-            .ToArrayAsync();
+            .ToArrayAsync(cancellationToken);
 
         return new NewsletterAdminListResponse(items, total);
     }
 
-    public async Task<string> AdminExportCsvAsync(string? search, bool? isActive)
+    public async Task<string> AdminExportCsvAsync(
+        string? search,
+        bool? isActive,
+        CancellationToken cancellationToken = default)
     {
-        var list = await AdminListAsync(search, isActive, 0, 500);
+        var list = await AdminListAsync(search, isActive, 0, 500, cancellationToken);
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("Email,Ativo,ConsentimentoUtc,CriadoUtc,AtualizadoUtc,DescadastradoUtc");
         foreach (var i in list.Items)
@@ -172,7 +196,16 @@ public class NewsletterService : INewsletterService
         return sb.ToString();
     }
 
-    private async Task TrySendSubscriptionEmailsAsync(string email, string plainToken, bool reactivated)
+    /// <summary>
+    /// Envia confirmação e, em seguida, aviso ao admin (sequencial).
+    /// Retorna true se a confirmação ao inscrito foi enviada.
+    /// Nunca propaga exceção — inscrição já está salva.
+    /// </summary>
+    private async Task<bool> TrySendSubscriptionEmailsAsync(
+        string email,
+        string plainToken,
+        bool reactivated,
+        CancellationToken cancellationToken)
     {
         var baseUrl = (_emailOptions.FrontendBaseUrl ?? "http://localhost:3000").TrimEnd('/');
         var unsubUrl = $"{baseUrl}/newsletter/descadastrar?token={Uri.EscapeDataString(plainToken)}";
@@ -189,36 +222,58 @@ public class NewsletterService : INewsletterService
             <p>Esotera</p>
             """;
 
+        var confirmationSent = false;
         try
         {
-            await _emailSender.SendAsync(new EmailMessage(
-                email,
-                subject,
-                html,
-                $"Inscrição na newsletter Esotera confirmada. Para sair: {unsubUrl}"));
+            _logger.LogInformation(
+                "Newsletter: iniciando e-mail de confirmação. SmtpConfigured={Configured}",
+                _emailSender.IsConfigured);
+            await _emailSender.SendAsync(
+                new EmailMessage(
+                    email,
+                    subject,
+                    html,
+                    $"Inscrição na newsletter Esotera confirmada. Para sair: {unsubUrl}"),
+                cancellationToken);
+            confirmationSent = _emailSender.IsConfigured;
+            _logger.LogInformation(
+                "Newsletter: confirmação processada. EmailSent={EmailSent}",
+                confirmationSent);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falha ao enviar confirmação de newsletter para inscrito.");
+            _logger.LogError(
+                ex,
+                "Newsletter: falha ao enviar confirmação (inscrição já salva). ExceptionType={ExceptionType}",
+                ex.GetType().Name);
         }
 
         var admin = _emailOptions.AdminNotifyEmail?.Trim();
-        if (string.IsNullOrWhiteSpace(admin))
-            return;
+        if (string.IsNullOrWhiteSpace(admin) || !_emailSender.IsConfigured)
+            return confirmationSent;
 
         try
         {
-            await _emailSender.SendAsync(new EmailMessage(
-                admin,
-                $"Nova inscrição newsletter — {email}",
-                $"<p>Novo e-mail inscrito na newsletter: <strong>{System.Net.WebUtility.HtmlEncode(email)}</strong></p>" +
-                $"<p>{(reactivated ? "Reativação" : "Nova inscrição")}.</p>",
-                $"Nova inscrição newsletter: {email}"));
+            _logger.LogInformation("Newsletter: iniciando aviso ao administrador.");
+            await _emailSender.SendAsync(
+                new EmailMessage(
+                    admin,
+                    $"Nova inscrição newsletter — {email}",
+                    $"<p>Novo e-mail inscrito na newsletter: <strong>{System.Net.WebUtility.HtmlEncode(email)}</strong></p>" +
+                    $"<p>{(reactivated ? "Reativação" : "Nova inscrição")}.</p>",
+                    $"Nova inscrição newsletter: {email}"),
+                cancellationToken);
+            _logger.LogInformation("Newsletter: aviso ao administrador processado.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falha ao notificar admin sobre inscrição na newsletter.");
+            _logger.LogError(
+                ex,
+                "Newsletter: falha ao notificar admin (inscrição já salva). ExceptionType={ExceptionType}",
+                ex.GetType().Name);
         }
+
+        return confirmationSent;
     }
 
     private static string Escape(string value)

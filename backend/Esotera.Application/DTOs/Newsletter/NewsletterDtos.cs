@@ -6,7 +6,8 @@ public record SubscribeNewsletterRequest(
 );
 
 public record NewsletterMessageResponse(
-    string Message
+    string Message,
+    bool EmailSent = false
 );
 
 public record NewsletterSubscriptionDto(

@@ -28,7 +28,17 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 ["MERCADO_PAGO_SANDBOX_PIX_ENABLED"] = "true",
                 ["MERCADO_PAGO_SANDBOX_PIX_AMOUNT"] = "50.00",
                 ["MERCADO_PAGO_WEBHOOK_SECRET"] = "test-webhook-secret",
-                ["PUBLIC_API_BASE_URL"] = "http://localhost"
+                ["PUBLIC_API_BASE_URL"] = "http://localhost",
+                // Melhor Envio OAuth Sandbox — valores fictícios de teste.
+                ["MELHOR_ENVIO_ENABLED"] = "true",
+                ["MELHOR_ENVIO_ENVIRONMENT"] = "sandbox",
+                ["MELHOR_ENVIO_CLIENT_ID"] = "100001",
+                ["MELHOR_ENVIO_CLIENT_SECRET"] = "test-me-client-secret-not-real",
+                ["MELHOR_ENVIO_REDIRECT_URI"] = "http://localhost/api/integrations/melhor-envio/callback",
+                ["MELHOR_ENVIO_USER_AGENT"] = "Esotera Test (test@esotera.demo)",
+                ["FRONTEND_BASE_URL"] = "https://esotera.vercel.app",
+                // 32 bytes zero — apenas testes.
+                ["INTEGRATIONS_ENCRYPTION_KEY"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
             });
         });
 

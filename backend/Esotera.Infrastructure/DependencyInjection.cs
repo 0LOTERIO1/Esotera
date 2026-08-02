@@ -119,8 +119,31 @@ public static class DependencyInjection
             options.Enabled = ParseBool(configuration["MELHOR_ENVIO_ENABLED"] ?? configuration["MelhorEnvio:Enabled"]) ?? options.Enabled;
             options.ClientId = FirstNonEmpty(options.ClientId, configuration["MELHOR_ENVIO_CLIENT_ID"], configuration["MelhorEnvio:ClientId"]);
             options.ClientSecret = FirstNonEmpty(options.ClientSecret, configuration["MELHOR_ENVIO_CLIENT_SECRET"], configuration["MelhorEnvio:ClientSecret"]);
-            options.Environment = FirstNonEmpty(options.Environment, configuration["MELHOR_ENVIO_ENVIRONMENT"], configuration["MelhorEnvio:Environment"])
-                ?? "sandbox";
+            options.Environment = FirstNonEmpty(
+                configuration["MELHOR_ENVIO_ENVIRONMENT"],
+                configuration["MelhorEnvio:Environment"],
+                options.Environment) ?? "sandbox";
+            options.RedirectUri = FirstNonEmpty(
+                options.RedirectUri,
+                configuration["MELHOR_ENVIO_REDIRECT_URI"],
+                configuration["MelhorEnvio:RedirectUri"]);
+            options.UserAgent = FirstNonEmpty(
+                options.UserAgent,
+                configuration["MELHOR_ENVIO_USER_AGENT"],
+                configuration["MelhorEnvio:UserAgent"]);
+            options.FrontendBaseUrl = FirstNonEmpty(
+                options.FrontendBaseUrl,
+                configuration["FRONTEND_BASE_URL"],
+                configuration["MelhorEnvio:FrontendBaseUrl"],
+                configuration["Email:FrontendBaseUrl"]);
+        });
+        services.Configure<IntegrationsEncryptionOptions>(options =>
+        {
+            configuration.GetSection(IntegrationsEncryptionOptions.SectionName).Bind(options);
+            options.KeyBase64 = FirstNonEmpty(
+                options.KeyBase64,
+                configuration["INTEGRATIONS_ENCRYPTION_KEY"],
+                configuration["IntegrationsEncryption:KeyBase64"]);
         });
         services.Configure<J3ShippingOptions>(options =>
         {
@@ -133,6 +156,8 @@ public static class DependencyInjection
         services.AddScoped<ShippingQuoteService>();
         services.AddScoped<IShippingQuoteService>(sp => sp.GetRequiredService<ShippingQuoteService>());
         services.AddScoped<ISimulatedShippingService>(sp => sp.GetRequiredService<ShippingQuoteService>());
+        services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
+        services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
 
@@ -144,6 +169,8 @@ public static class DependencyInjection
             services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<CapturingEmailSender>());
             services.AddSingleton<FakeMercadoPagoClient>();
             services.AddSingleton<IMercadoPagoClient>(sp => sp.GetRequiredService<FakeMercadoPagoClient>());
+            services.AddSingleton<FakeMelhorEnvioOAuthClient>();
+            services.AddSingleton<IMelhorEnvioOAuthClient>(sp => sp.GetRequiredService<FakeMelhorEnvioOAuthClient>());
         }
         else
         {
@@ -164,6 +191,11 @@ public static class DependencyInjection
             services.AddHttpClient<IMercadoPagoClient, MercadoPagoHttpClient>(client =>
             {
                 client.BaseAddress = new Uri("https://api.mercadopago.com/");
+                client.Timeout = TimeSpan.FromSeconds(60);
+            });
+
+            services.AddHttpClient<IMelhorEnvioOAuthClient, MelhorEnvioOAuthHttpClient>(client =>
+            {
                 client.Timeout = TimeSpan.FromSeconds(60);
             });
         }

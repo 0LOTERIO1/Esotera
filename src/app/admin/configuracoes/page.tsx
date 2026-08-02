@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { FREE_SHIPPING_STATES } from "@/config/shipping";
 import { FormField, inputClassName } from "@/components/ui/FormField";
@@ -9,9 +10,166 @@ import { useToastStore } from "@/stores/toastStore";
 import { isApiMode } from "@/config/dataMode";
 import { getSettingsRepository } from "@/services/repositories";
 import { ApiError } from "@/services/api/apiClient";
+import {
+  melhorEnvioApi,
+  melhorEnvioErrorMessage,
+  type MelhorEnvioStatusDto,
+} from "@/services/api/melhorEnvioApi";
 import type { StoreSettings } from "@/types";
 
-export default function AdminSettingsPage() {
+function formatUtc(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("pt-BR", { timeZone: "UTC" }) + " UTC";
+  } catch {
+    return "—";
+  }
+}
+
+function MelhorEnvioSection() {
+  const apiMode = isApiMode();
+  const push = useToastStore((s) => s.push);
+  const searchParams = useSearchParams();
+  const [status, setStatus] = useState<MelhorEnvioStatusDto | null>(null);
+  const [loading, setLoading] = useState(apiMode);
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    const me = searchParams.get("me");
+    if (!me) return;
+    if (me === "connected") {
+      push("success", "Melhor Envio conectado com sucesso.");
+    } else if (me === "error") {
+      push("error", melhorEnvioErrorMessage(searchParams.get("reason")));
+    }
+    // Limpa a query da barra sem recarregar o restante do estado.
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("me");
+      url.searchParams.delete("reason");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toast once from callback query
+  }, []);
+
+  useEffect(() => {
+    if (!apiMode) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const next = await melhorEnvioApi.getStatus();
+        if (!cancelled) setStatus(next);
+      } catch (err) {
+        if (!cancelled) {
+          push(
+            "error",
+            err instanceof ApiError
+              ? err.userMessage
+              : "Não foi possível carregar o status do Melhor Envio.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiMode, push]);
+
+  async function connect() {
+    setConnecting(true);
+    try {
+      const { authorizationUrl } = await melhorEnvioApi.startAuthorize();
+      window.location.assign(authorizationUrl);
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError
+          ? err.userMessage
+          : "Não foi possível iniciar a conexão com o Melhor Envio.",
+      );
+      setConnecting(false);
+    }
+  }
+
+  if (!apiMode) {
+    return (
+      <section className="mt-10 max-w-xl border-t border-esotera-secondary/15 pt-8">
+        <h2 className="font-serif text-2xl text-esotera-secondary">
+          Melhor Envio
+        </h2>
+        <p className="mt-2 text-sm text-esotera-muted">
+          Disponível apenas no modo API (OAuth Sandbox).
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-10 max-w-xl border-t border-esotera-secondary/15 pt-8">
+      <h2 className="font-serif text-2xl text-esotera-secondary">
+        Melhor Envio
+      </h2>
+      <p className="mt-1 text-sm text-esotera-muted">
+        Conexão OAuth Sandbox (escopo shipping-calculate). Cotação real ainda
+        não está ativa.
+      </p>
+
+      {loading ? (
+        <p className="mt-4 text-sm text-esotera-muted">Carregando status…</p>
+      ) : (
+        <div className="mt-4 space-y-2 text-sm text-esotera-muted">
+          <p>
+            Status:{" "}
+            <span className="text-esotera-secondary">
+              {status?.connected ? "Conectado" : "Desconectado"}
+            </span>
+          </p>
+          {status?.connected ? (
+            <>
+              <p>Ambiente: {status.environment ?? "—"}</p>
+              <p>Escopos: {status.scopes ?? "—"}</p>
+              <p>
+                Access token válido até:{" "}
+                {formatUtc(status.accessTokenExpiresAtUtc)}
+              </p>
+              <p>
+                Refresh válido até:{" "}
+                {formatUtc(status.refreshTokenExpiresAtUtc)}
+              </p>
+              {status.needsReauthorization ? (
+                <p className="text-esotera-secondary">
+                  É necessário reconectar (refresh expirado).
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p>
+              Servidor configurado:{" "}
+              {status?.configured ? "sim" : "não — defina as variáveis no Render"}
+            </p>
+          )}
+          <div className="pt-3">
+            <Button
+              type="button"
+              onClick={() => void connect()}
+              disabled={connecting || status?.configured === false}
+            >
+              {connecting ? "Redirecionando…" : "Conectar Melhor Envio"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AdminSettingsForm() {
   const settings = useSettingsStore((s) => s.settings);
   const saveSettings = useSettingsStore((s) => s.saveSettings);
   const resetSettings = useSettingsStore((s) => s.resetSettings);
@@ -262,6 +420,20 @@ export default function AdminSettingsPage() {
           ) : null}
         </div>
       </div>
+
+      <Suspense
+        fallback={
+          <p className="mt-10 text-sm text-esotera-muted">
+            Carregando Melhor Envio…
+          </p>
+        }
+      >
+        <MelhorEnvioSection />
+      </Suspense>
     </div>
   );
+}
+
+export default function AdminSettingsPage() {
+  return <AdminSettingsForm />;
 }

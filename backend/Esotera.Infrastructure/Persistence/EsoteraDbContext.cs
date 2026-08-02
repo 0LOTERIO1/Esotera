@@ -21,6 +21,8 @@ public class EsoteraDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<NewsletterSubscription> NewsletterSubscriptions => Set<NewsletterSubscription>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<MelhorEnvioConnection> MelhorEnvioConnections => Set<MelhorEnvioConnection>();
+    public DbSet<MelhorEnvioOAuthState> MelhorEnvioOAuthStates => Set<MelhorEnvioOAuthState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -33,6 +33,9 @@ public class StoreSettingsService : IStoreSettingsService
         if (!FreeShippingStatesParser.TryValidate(request.FreeShippingStates, out var error, out var csv))
             throw new Application.Exceptions.ValidationException("freeShippingStates", error!);
 
+        var originDigits = BrazilianCep.TryNormalize(request.ShippingOriginCep)
+            ?? throw new Application.Exceptions.ValidationException("shippingOriginCep", "CEP de origem inválido.");
+
         var s = await GetOrCreateAsync(tracking: true);
         s.StoreName = request.StoreName.Trim();
         s.FreeShippingMin = request.FreeShippingMin;
@@ -41,6 +44,12 @@ public class StoreSettingsService : IStoreSettingsService
         s.J3CutoffHour = request.J3CutoffHour;
         s.ShippingSubsidyEnabled = request.ShippingSubsidyEnabled;
         s.ShippingSubsidyAmount = request.ShippingSubsidyAmount;
+        s.ShippingOriginCep = originDigits;
+        s.PackageLengthCm = request.PackageLengthCm;
+        s.PackageWidthCm = request.PackageWidthCm;
+        s.PackageHeightCm = request.PackageHeightCm;
+        s.PackageWeightGrams = request.PackageWeightGrams;
+        s.MelhorEnvioQuoteEnabled = request.MelhorEnvioQuoteEnabled;
         s.UpdatedAtUtc = DateTime.UtcNow;
         // Campos legados CouponDiscount / CouponMinPurchase não são atualizados pela API
         await _context.SaveChangesAsync();
@@ -54,26 +63,34 @@ public class StoreSettingsService : IStoreSettingsService
         if (existing != null)
             return existing;
 
-        var created = new StoreSettings
-        {
-            Id = 1,
-            StoreName = "Esotera",
-            FreeShippingMin = 99.90m,
-            FreeShippingStatesCsv = "SP,RJ,MG,ES,PR,SC,RS",
-            J3Price = 12.00m,
-            J3CutoffHour = 12,
-#pragma warning disable CS0618
-            CouponDiscount = 5.00m,
-            CouponMinPurchase = 30.00m,
-#pragma warning restore CS0618
-            ShippingSubsidyEnabled = false,
-            ShippingSubsidyAmount = 10.00m,
-            UpdatedAtUtc = DateTime.UtcNow
-        };
+        var created = CreateDefault();
         _context.StoreSettings.Add(created);
         await _context.SaveChangesAsync();
         return created;
     }
+
+    public static StoreSettings CreateDefault() => new()
+    {
+        Id = 1,
+        StoreName = "Esotera",
+        FreeShippingMin = 99.90m,
+        FreeShippingStatesCsv = "SP,RJ,MG,ES,PR,SC,RS",
+        J3Price = 12.00m,
+        J3CutoffHour = 12,
+#pragma warning disable CS0618
+        CouponDiscount = 5.00m,
+        CouponMinPurchase = 30.00m,
+#pragma warning restore CS0618
+        ShippingSubsidyEnabled = false,
+        ShippingSubsidyAmount = 10.00m,
+        ShippingOriginCep = "08061420",
+        PackageLengthCm = 16m,
+        PackageWidthCm = 11m,
+        PackageHeightCm = 6m,
+        PackageWeightGrams = 400,
+        MelhorEnvioQuoteEnabled = false,
+        UpdatedAtUtc = DateTime.UtcNow
+    };
 
     private static PublicStoreSettingsDto MapPublic(StoreSettings s) =>
         new(
@@ -95,6 +112,12 @@ public class StoreSettingsService : IStoreSettingsService
             s.J3CutoffHour,
             s.ShippingSubsidyEnabled,
             s.ShippingSubsidyAmount,
+            BrazilianCep.FormatMasked(BrazilianCep.TryNormalize(s.ShippingOriginCep) ?? "08061420"),
+            s.PackageLengthCm,
+            s.PackageWidthCm,
+            s.PackageHeightCm,
+            s.PackageWeightGrams,
+            s.MelhorEnvioQuoteEnabled,
             s.UpdatedAtUtc
         );
 }

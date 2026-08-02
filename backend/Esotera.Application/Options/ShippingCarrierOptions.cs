@@ -10,6 +10,7 @@ public class MelhorEnvioOptions
 
     public const string SandboxAuthorizeUrl = "https://sandbox.melhorenvio.com.br/oauth/authorize";
     public const string SandboxTokenUrl = "https://sandbox.melhorenvio.com.br/oauth/token";
+    public const string SandboxCalculateUrl = "https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate";
     public const string RequiredScope = "shipping-calculate";
     public const int AccessTokenLifetimeDays = 30;
     public const int RefreshTokenLifetimeDays = 45;

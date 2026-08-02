@@ -1,33 +1,20 @@
 using Esotera.Application.Interfaces;
-using Esotera.Application.Options;
+using Esotera.Application.Shipping;
 using Esotera.Domain.Entities;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Esotera.Infrastructure.Services;
 
 /// <summary>
-/// Orquestra cotação: tenta transportadoras reais se configuradas; caso contrário
-/// (ou em falha) usa <see cref="SimulatedShippingService"/> — sem inventar preços
-/// a partir de erros de API.
+/// Adaptador legado síncrono sobre <see cref="IShippingOptionsService"/>.
+/// Novos fluxos devem usar GetAvailableOptionsAsync / RequireOptionAsync.
 /// </summary>
 public sealed class ShippingQuoteService : IShippingQuoteService, ISimulatedShippingService
 {
-    private readonly SimulatedShippingService _simulated;
-    private readonly MelhorEnvioOptions _melhorEnvio;
-    private readonly J3ShippingOptions _j3;
-    private readonly ILogger<ShippingQuoteService> _logger;
+    private readonly IShippingOptionsService _options;
 
-    public ShippingQuoteService(
-        SimulatedShippingService simulated,
-        IOptions<MelhorEnvioOptions> melhorEnvio,
-        IOptions<J3ShippingOptions> j3,
-        ILogger<ShippingQuoteService> logger)
+    public ShippingQuoteService(IShippingOptionsService options)
     {
-        _simulated = simulated;
-        _melhorEnvio = melhorEnvio.Value;
-        _j3 = j3.Value;
-        _logger = logger;
+        _options = options;
     }
 
     public (decimal Price, int EstimatedDays) Quote(
@@ -37,21 +24,13 @@ public sealed class ShippingQuoteService : IShippingQuoteService, ISimulatedShip
         decimal productsTotalAfterDiscount,
         StoreSettings settings)
     {
-        // Integração real ainda bloqueada: faltam credenciais/regras oficiais do cliente.
-        // Quando MelhorEnvio/J3 estiverem IsConfigured, chamar providers aqui.
-        // Em falha de transportadora: NÃO inventar valor — relançar ValidationException
-        // ou cair no simulado apenas se a política do negócio permitir (hoje: sempre simulado).
-        if (_melhorEnvio.IsConfigured || _j3.IsConfigured)
-        {
-            _logger.LogWarning(
-                "Credenciais de transportadora detectadas, mas a integração real ainda não foi ativada. Usando cotação simulada.");
-        }
+        var digits = new string(cep.Where(char.IsDigit).ToArray());
+        var query = new ShippingQuoteQuery(digits, state, productsTotalAfterDiscount);
+        var option = _options
+            .RequireOptionAsync(shippingMethodId, query, settings)
+            .GetAwaiter()
+            .GetResult();
 
-        return _simulated.Quote(
-            shippingMethodId,
-            cep,
-            state,
-            productsTotalAfterDiscount,
-            settings);
+        return (option.FinalPrice, option.EstimatedDaysMax);
     }
 }

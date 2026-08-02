@@ -1,3 +1,5 @@
+using Esotera.Application.Interfaces;
+using Esotera.Domain.Entities;
 using Esotera.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -47,7 +49,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             var descriptorsToRemove = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<EsoteraDbContext>) ||
                            d.ServiceType == typeof(EsoteraDbContext) ||
-                           (d.ServiceType.IsGenericType && 
+                           (d.ServiceType.IsGenericType &&
                             d.ServiceType.GetGenericTypeDefinition() == typeof(DbContextOptions<>)))
                 .ToList();
 
@@ -85,6 +87,14 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             var seeder = services.GetRequiredService<DevSeed>();
             seeder.SeedAsync().GetAwaiter().GetResult();
+
+            // Habilita cotação ME + OAuth fake para regressão de CreateOrder (flag inicia off no seed).
+            ShippingTestHelpers.EnableMelhorEnvioQuoteAsync(
+                    host.Services,
+                    enabled: true,
+                    withOAuthConnection: true)
+                .GetAwaiter()
+                .GetResult();
         }
         catch (Exception ex)
         {

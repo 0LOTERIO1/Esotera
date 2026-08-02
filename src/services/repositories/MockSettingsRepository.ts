@@ -34,6 +34,12 @@ export class MockSettingsRepository implements ISettingsRepository {
         enabled: payload.shippingSubsidyEnabled,
         amount: payload.shippingSubsidyAmount,
       },
+      shippingOriginCep: payload.shippingOriginCep,
+      packageLengthCm: payload.packageLengthCm,
+      packageWidthCm: payload.packageWidthCm,
+      packageHeightCm: payload.packageHeightCm,
+      packageWeightGrams: payload.packageWeightGrams,
+      melhorEnvioQuoteEnabled: payload.melhorEnvioQuoteEnabled,
     };
     return structuredClone(mockSettings);
   }

@@ -21,16 +21,16 @@ public class OrderService : IOrderService
 
     private readonly EsoteraDbContext _context;
     private readonly ICouponService _couponService;
-    private readonly IShippingQuoteService _shippingService;
+    private readonly IShippingOptionsService _shippingOptions;
 
     public OrderService(
         EsoteraDbContext context,
         ICouponService couponService,
-        IShippingQuoteService shippingService)
+        IShippingOptionsService shippingOptions)
     {
         _context = context;
         _couponService = couponService;
-        _shippingService = shippingService;
+        _shippingOptions = shippingOptions;
     }
 
     public async Task<OrderDto> CreateAsync(
@@ -194,15 +194,20 @@ public class OrderService : IOrderService
             }
 
             var settings = await _context.StoreSettings.FirstOrDefaultAsync()
-                ?? new StoreSettings();
+                ?? StoreSettingsService.CreateDefault();
 
             var subtotalAfterDiscount = Math.Max(0, subtotal - discount);
-            var (shippingPrice, estimatedDays) = _shippingService.Quote(
+            var cepDigits = new string(address.Cep.Where(char.IsDigit).ToArray());
+            var shippingOption = await _shippingOptions.RequireOptionAsync(
                 request.ShippingMethodId,
-                address.Cep,
-                address.State,
-                subtotalAfterDiscount,
+                new Application.Shipping.ShippingQuoteQuery(
+                    cepDigits,
+                    address.State,
+                    subtotalAfterDiscount),
                 settings);
+
+            var shippingPrice = shippingOption.FinalPrice;
+            var estimatedDays = shippingOption.EstimatedDaysMax;
 
             var total = subtotalAfterDiscount + Math.Max(0, shippingPrice);
 
@@ -232,11 +237,22 @@ public class OrderService : IOrderService
                 J3CutoffHourSnapshot = settings.J3CutoffHour,
                 ShippingSubsidyEnabledSnapshot = settings.ShippingSubsidyEnabled,
                 ShippingSubsidyAmountSnapshot = settings.ShippingSubsidyAmount,
-                ShippingMethodId = request.ShippingMethodId,
-                ShippingMethodName = ShippingMethod.GetDisplayName(request.ShippingMethodId),
-                ShippingProvider = ShippingMethod.GetProvider(request.ShippingMethodId),
+                ShippingMethodId = shippingOption.ShippingMethodId,
+                ShippingMethodName = ShippingMethod.GetDisplayName(shippingOption.ShippingMethodId),
+                ShippingProvider = shippingOption.Provider,
                 ShippingEstimatedDays = estimatedDays,
-                ShipCep = new string(address.Cep.Where(char.IsDigit).ToArray()),
+                ShippingCompanyId = shippingOption.CompanyId,
+                ShippingServiceId = shippingOption.ServiceId,
+                ShippingCarrierName = shippingOption.CarrierName,
+                ShippingServiceName = shippingOption.ServiceName,
+                ShippingOriginalPrice = shippingOption.OriginalPrice,
+                ShippingDeliveryMinDays = shippingOption.EstimatedDaysMin,
+                ShippingDeliveryMaxDays = shippingOption.EstimatedDaysMax,
+                ShippingQuoteEnvironment = shippingOption.QuoteEnvironment,
+                ShippingQuotedAtUtc = shippingOption.QuotedAtUtc,
+                ShippingFreeShippingApplied = shippingOption.FreeShippingApplied,
+                ShippingSubsidyApplied = shippingOption.SubsidyApplied,
+                ShipCep = cepDigits,
                 ShipStreet = address.Street.Trim(),
                 ShipNumber = address.Number.Trim(),
                 ShipComplement = address.Complement?.Trim(),

@@ -6,9 +6,9 @@ export const shippingOrigin = {
   city: "São Paulo",
   state: "SP",
   package: {
-    widthCm: 15,
-    heightCm: 15,
-    lengthCm: 5,
+    widthCm: 11,
+    heightCm: 6,
+    lengthCm: 16,
     weightGrams: 400,
   },
 } as const;
@@ -36,16 +36,20 @@ export const defaultStoreSettings: StoreSettings = {
     enabled: false,
     amount: 10,
   },
+  shippingOriginCep: "08061-420",
+  packageLengthCm: 16,
+  packageWidthCm: 11,
+  packageHeightCm: 6,
+  packageWeightGrams: 400,
+  melhorEnvioQuoteEnabled: false,
 };
 
 /**
  * TODO: substituir por cobertura oficial J3 quando fornecida pelo cliente.
  * Faixas simuladas apenas para demonstração — NÃO são cobertura oficial.
  *
- * Para ativar Melhor Envio / J3 reais (futuro):
- * - Backend: MELHOR_ENVIO_ENABLED + CLIENT_ID/SECRET; J3_ENABLED + API_URL/TOKEN
- * - Cobertura oficial de CEPs J3, tabelas/serviços Melhor Envio, origem de envio
- * - Até lá, checkout e pedidos usam cotação simulada (valores fixos por UF)
+ * Cotação Melhor Envio real: backend POST /api/shipping/quote (sandbox),
+ * flag admin "Cotação Melhor Envio ativa" + OAuth. Frontend nunca chama ME.
  */
 export const simulatedJ3CepRanges: Array<{ start: string; end: string }> = [
   { start: "01000000", end: "05999999" },

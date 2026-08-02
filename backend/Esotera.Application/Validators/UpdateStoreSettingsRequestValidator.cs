@@ -28,5 +28,22 @@ public class UpdateStoreSettingsRequestValidator : AbstractValidator<UpdateStore
 
         RuleFor(x => x.ShippingSubsidyAmount)
             .GreaterThanOrEqualTo(0);
+
+        RuleFor(x => x.ShippingOriginCep)
+            .NotEmpty().WithMessage("CEP de origem é obrigatório.")
+            .Must(c => BrazilianCep.IsValid(c))
+            .WithMessage("CEP de origem inválido.");
+
+        RuleFor(x => x.PackageLengthCm)
+            .InclusiveBetween(1, 100).WithMessage("Comprimento do pacote inválido.");
+
+        RuleFor(x => x.PackageWidthCm)
+            .InclusiveBetween(1, 100).WithMessage("Largura do pacote inválido.");
+
+        RuleFor(x => x.PackageHeightCm)
+            .InclusiveBetween(1, 100).WithMessage("Altura do pacote inválida.");
+
+        RuleFor(x => x.PackageWeightGrams)
+            .InclusiveBetween(1, 30_000).WithMessage("Peso do pacote inválido.");
     }
 }

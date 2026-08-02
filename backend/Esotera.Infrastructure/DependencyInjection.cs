@@ -153,9 +153,10 @@ public static class DependencyInjection
             options.ApiToken = FirstNonEmpty(options.ApiToken, configuration["J3_API_TOKEN"], configuration["J3:ApiToken"]);
         });
         services.AddScoped<SimulatedShippingService>();
+        services.AddScoped<IShippingOptionsService, ShippingOptionsService>();
         services.AddScoped<ShippingQuoteService>();
         services.AddScoped<IShippingQuoteService>(sp => sp.GetRequiredService<ShippingQuoteService>());
-        services.AddScoped<ISimulatedShippingService>(sp => sp.GetRequiredService<ShippingQuoteService>());
+        services.AddScoped<ISimulatedShippingService>(sp => sp.GetRequiredService<SimulatedShippingService>());
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
@@ -171,6 +172,8 @@ public static class DependencyInjection
             services.AddSingleton<IMercadoPagoClient>(sp => sp.GetRequiredService<FakeMercadoPagoClient>());
             services.AddSingleton<FakeMelhorEnvioOAuthClient>();
             services.AddSingleton<IMelhorEnvioOAuthClient>(sp => sp.GetRequiredService<FakeMelhorEnvioOAuthClient>());
+            services.AddSingleton<FakeMelhorEnvioShipmentClient>();
+            services.AddSingleton<IMelhorEnvioShipmentClient>(sp => sp.GetRequiredService<FakeMelhorEnvioShipmentClient>());
         }
         else
         {
@@ -197,6 +200,11 @@ public static class DependencyInjection
             services.AddHttpClient<IMelhorEnvioOAuthClient, MelhorEnvioOAuthHttpClient>(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(60);
+            });
+
+            services.AddHttpClient<IMelhorEnvioShipmentClient, MelhorEnvioShipmentHttpClient>(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(15);
             });
         }
 

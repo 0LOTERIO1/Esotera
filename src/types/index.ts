@@ -166,6 +166,12 @@ export type StoreSettings = {
     enabled: boolean;
     amount: number;
   };
+  shippingOriginCep?: string;
+  packageLengthCm?: number;
+  packageWidthCm?: number;
+  packageHeightCm?: number;
+  packageWeightGrams?: number;
+  melhorEnvioQuoteEnabled?: boolean;
 };
 
 export type ToastMessage = {

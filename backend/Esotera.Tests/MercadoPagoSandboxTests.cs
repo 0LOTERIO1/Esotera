@@ -225,11 +225,12 @@ public class MercadoPagoSandboxTests : IClassFixture<CustomWebApplicationFactory
             [new CreateOrderItemRequest(ProductId, 1, null)],
             new OrderAddressInput("01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
             null,
-            "j3",
+            "melhor_economico",
             "pix",
             null,
             null);
         var orderRes = await TestHelpers.PostOrderAsync(_client, orderReq);
+        orderRes.EnsureSuccessStatusCode();
         var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
 
         var testOrderId = "ORDTESTSANDBOX00000001";
@@ -277,11 +278,12 @@ public class MercadoPagoSandboxTests : IClassFixture<CustomWebApplicationFactory
             [new CreateOrderItemRequest(ProductId, 1, null)],
             new OrderAddressInput("01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
             null,
-            "j3",
+            "melhor_economico",
             "pix",
             null,
             null);
         var orderRes = await TestHelpers.PostOrderAsync(_client, orderReq);
+        orderRes.EnsureSuccessStatusCode();
         var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
 
         await TestHelpers.ForceOrderTotalAsync(_factory.Services, order!.Id, 50.00m);
@@ -359,7 +361,15 @@ file class ProductionMercadoPagoWebApplicationFactory : WebApplicationFactory<Pr
                 ["MercadoPago__Environment"] = "Production",
                 ["MERCADO_PAGO_SANDBOX_PIX_ENABLED"] = "true",
                 ["MERCADO_PAGO_WEBHOOK_SECRET"] = "test-webhook-secret",
-                ["PUBLIC_API_BASE_URL"] = "http://localhost"
+                ["PUBLIC_API_BASE_URL"] = "http://localhost",
+                ["MELHOR_ENVIO_ENABLED"] = "true",
+                ["MELHOR_ENVIO_ENVIRONMENT"] = "sandbox",
+                ["MELHOR_ENVIO_CLIENT_ID"] = "100001",
+                ["MELHOR_ENVIO_CLIENT_SECRET"] = "test-me-client-secret-not-real",
+                ["MELHOR_ENVIO_REDIRECT_URI"] = "http://localhost/api/integrations/melhor-envio/callback",
+                ["MELHOR_ENVIO_USER_AGENT"] = "Esotera Test (test@esotera.demo)",
+                ["FRONTEND_BASE_URL"] = "https://esotera.vercel.app",
+                ["INTEGRATIONS_ENCRYPTION_KEY"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
             });
         });
 
@@ -392,6 +402,9 @@ file class ProductionMercadoPagoWebApplicationFactory : WebApplicationFactory<Pr
         db.Database.EnsureCreated();
         scope.ServiceProvider.GetRequiredService<CatalogBootstrap>().RunAsync().GetAwaiter().GetResult();
         scope.ServiceProvider.GetRequiredService<DevSeed>().SeedAsync().GetAwaiter().GetResult();
+        ShippingTestHelpers.EnableMelhorEnvioQuoteAsync(host.Services, enabled: true, withOAuthConnection: true)
+            .GetAwaiter()
+            .GetResult();
         return host;
     }
 }

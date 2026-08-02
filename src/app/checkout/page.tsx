@@ -225,6 +225,10 @@ export default function CheckoutPage() {
 
   async function finish() {
     if (!selectedAddress || !selectedShipping || !user || finishing) return;
+    if (shippingOptions.length === 0 || shippingError) {
+      push("error", "Calcule o frete e selecione uma modalidade válida antes de finalizar.");
+      return;
+    }
     if (activeRequestRef.current) return;
 
     if (!isRealPaymentEnabled() && !canCompleteCheckoutWithoutRealPayment()) {

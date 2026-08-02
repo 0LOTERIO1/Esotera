@@ -90,6 +90,13 @@ try
             limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
             limiter.QueueLimit = 0;
         });
+        options.AddFixedWindowLimiter("shipping-quote", limiter =>
+        {
+            limiter.PermitLimit = isTesting ? 10_000 : 60;
+            limiter.Window = TimeSpan.FromMinutes(1);
+            limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            limiter.QueueLimit = 0;
+        });
     });
 
     builder.Services.AddControllers()

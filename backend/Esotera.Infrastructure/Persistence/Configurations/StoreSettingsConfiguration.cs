@@ -24,5 +24,13 @@ public class StoreSettingsConfiguration : IEntityTypeConfiguration<StoreSettings
         builder.Property(x => x.CouponMinPurchase).HasPrecision(18, 2);
 #pragma warning restore CS0618
         builder.Property(x => x.ShippingSubsidyAmount).HasPrecision(18, 2);
+
+        builder.Property(x => x.ShippingOriginCep)
+            .HasMaxLength(8)
+            .IsRequired();
+
+        builder.Property(x => x.PackageLengthCm).HasPrecision(18, 2);
+        builder.Property(x => x.PackageWidthCm).HasPrecision(18, 2);
+        builder.Property(x => x.PackageHeightCm).HasPrecision(18, 2);
     }
 }

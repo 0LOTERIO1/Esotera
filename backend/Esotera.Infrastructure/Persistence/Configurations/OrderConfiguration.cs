@@ -40,6 +40,10 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(x => x.ShippingMethodId).HasMaxLength(50).IsRequired();
         builder.Property(x => x.ShippingMethodName).HasMaxLength(100).IsRequired();
         builder.Property(x => x.ShippingProvider).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.ShippingOriginalPrice).HasPrecision(18, 2);
+        builder.Property(x => x.ShippingCarrierName).HasMaxLength(100);
+        builder.Property(x => x.ShippingServiceName).HasMaxLength(100);
+        builder.Property(x => x.ShippingQuoteEnvironment).HasMaxLength(32);
 
         builder.Property(x => x.ShipCep).HasMaxLength(8).IsRequired();
         builder.Property(x => x.ShipStreet).HasMaxLength(200).IsRequired();

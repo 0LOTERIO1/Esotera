@@ -28,7 +28,15 @@ export function mapAdminSettingsToStore(
   dto: AdminStoreSettingsDto,
   legacy?: Pick<StoreSettings, "couponDiscount" | "couponMinPurchase">,
 ): StoreSettings {
-  return mapPublicSettingsToStore(dto, legacy);
+  return {
+    ...mapPublicSettingsToStore(dto, legacy),
+    shippingOriginCep: dto.shippingOriginCep,
+    packageLengthCm: dto.packageLengthCm,
+    packageWidthCm: dto.packageWidthCm,
+    packageHeightCm: dto.packageHeightCm,
+    packageWeightGrams: dto.packageWeightGrams,
+    melhorEnvioQuoteEnabled: dto.melhorEnvioQuoteEnabled,
+  };
 }
 
 export function toUpdateSettingsPayload(
@@ -42,5 +50,11 @@ export function toUpdateSettingsPayload(
     j3CutoffHour: settings.j3CutoffHour,
     shippingSubsidyEnabled: settings.shippingSubsidy.enabled,
     shippingSubsidyAmount: settings.shippingSubsidy.amount,
+    shippingOriginCep: settings.shippingOriginCep ?? "08061-420",
+    packageLengthCm: settings.packageLengthCm ?? 16,
+    packageWidthCm: settings.packageWidthCm ?? 11,
+    packageHeightCm: settings.packageHeightCm ?? 6,
+    packageWeightGrams: settings.packageWeightGrams ?? 400,
+    melhorEnvioQuoteEnabled: settings.melhorEnvioQuoteEnabled ?? false,
   };
 }

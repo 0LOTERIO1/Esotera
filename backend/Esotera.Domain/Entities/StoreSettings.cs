@@ -16,5 +16,19 @@ public class StoreSettings
     public decimal CouponMinPurchase { get; set; } = 30.00m;
     public bool ShippingSubsidyEnabled { get; set; }
     public decimal ShippingSubsidyAmount { get; set; } = 10.00m;
+
+    /// <summary>CEP de origem para cotação Melhor Envio (8 dígitos ou mascarado).</summary>
+    public string ShippingOriginCep { get; set; } = "08061420";
+    public decimal PackageLengthCm { get; set; } = 16m;
+    public decimal PackageWidthCm { get; set; } = 11m;
+    public decimal PackageHeightCm { get; set; } = 6m;
+    public int PackageWeightGrams { get; set; } = 400;
+
+    /// <summary>
+    /// Cotação Melhor Envio ativa — independente de MELHOR_ENVIO_ENABLED e do status OAuth.
+    /// Inicia desativada.
+    /// </summary>
+    public bool MelhorEnvioQuoteEnabled { get; set; }
+
     public DateTime UpdatedAtUtc { get; set; }
 }

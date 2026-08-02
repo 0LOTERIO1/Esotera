@@ -62,18 +62,37 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
     private async Task RestoreDefaultSettingsAsync()
     {
         await SetAdminAsync();
-        var response = await _client.PutAsJsonAsync("/api/admin/settings", new
-        {
-            storeName = "Esotera",
-            freeShippingMin = 99.90m,
-            freeShippingStates = new[] { "SP", "RJ", "MG", "ES", "PR", "SC", "RS" },
-            j3Price = 12m,
-            j3CutoffHour = 12,
-            shippingSubsidyEnabled = false,
-            shippingSubsidyAmount = 10m
-        });
+        var response = await _client.PutAsJsonAsync(
+            "/api/admin/settings",
+            ShippingTestHelpers.DefaultAdminSettingsPayload(melhorEnvioQuoteEnabled: true));
         response.EnsureSuccessStatusCode();
     }
+
+    private static object SettingsPayload(
+        decimal freeShippingMin = 99.90m,
+        string[]? freeShippingStates = null,
+        bool subsidyEnabled = false,
+        decimal subsidyAmount = 10m,
+        decimal j3Price = 12m,
+        int j3Cutoff = 12,
+        string storeName = "Esotera",
+        bool melhorEnvioQuoteEnabled = true) =>
+        new
+        {
+            storeName,
+            freeShippingMin,
+            freeShippingStates = freeShippingStates ?? new[] { "SP", "RJ", "MG", "ES", "PR", "SC", "RS" },
+            j3Price,
+            j3CutoffHour = j3Cutoff,
+            shippingSubsidyEnabled = subsidyEnabled,
+            shippingSubsidyAmount = subsidyAmount,
+            shippingOriginCep = "08061-420",
+            packageLengthCm = 16m,
+            packageWidthCm = 11m,
+            packageHeightCm = 6m,
+            packageWeightGrams = 400,
+            melhorEnvioQuoteEnabled
+        };
 
     // ── Admin auth ──────────────────────────────────────────────
 
@@ -91,16 +110,8 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
         await SetCustomerAsync();
         (await _client.GetAsync("/api/admin/coupons")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await _client.GetAsync("/api/admin/settings")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await _client.PutAsJsonAsync("/api/admin/settings", new
-        {
-            storeName = "X",
-            freeShippingMin = 99.9m,
-            freeShippingStates = new[] { "SP" },
-            j3Price = 12m,
-            j3CutoffHour = 12,
-            shippingSubsidyEnabled = false,
-            shippingSubsidyAmount = 10m
-        })).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _client.PutAsJsonAsync("/api/admin/settings", SettingsPayload(storeName: "X", freeShippingStates: ["SP"])))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     // ── Admin coupon CRUD ───────────────────────────────────────
@@ -533,16 +544,9 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
         }
 
         await SetAdminAsync();
-        await _client.PutAsJsonAsync("/api/admin/settings", new
-        {
-            storeName = "Esotera",
-            freeShippingMin = 50m,
-            freeShippingStates = new[] { "SP", "RJ" },
-            j3Price = 99m,
-            j3CutoffHour = 10,
-            shippingSubsidyEnabled = true,
-            shippingSubsidyAmount = 5m
-        });
+        await _client.PutAsJsonAsync(
+            "/api/admin/settings",
+            SettingsPayload(freeShippingMin: 50m, freeShippingStates: ["SP", "RJ"], j3Price: 99m, j3Cutoff: 10, subsidyEnabled: true, subsidyAmount: 5m));
 
         try
         {
@@ -587,28 +591,21 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
 
         try
         {
-            var bad = await _client.PutAsJsonAsync("/api/admin/settings", new
-            {
-                storeName = "Esotera",
-                freeShippingMin = 99.9m,
-                freeShippingStates = new[] { "SP", "XX" },
-                j3Price = 12m,
-                j3CutoffHour = 12,
-                shippingSubsidyEnabled = false,
-                shippingSubsidyAmount = 10m
-            });
+            var bad = await _client.PutAsJsonAsync(
+                "/api/admin/settings",
+                SettingsPayload(freeShippingStates: ["SP", "XX"]));
             bad.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-            var ok = await _client.PutAsJsonAsync("/api/admin/settings", new
-            {
-                storeName = "Esotera Test",
-                freeShippingMin = 80m,
-                freeShippingStates = new[] { " sp ", "rj", "SP" },
-                j3Price = 15m,
-                j3CutoffHour = 14,
-                shippingSubsidyEnabled = true,
-                shippingSubsidyAmount = 3m
-            });
+            var ok = await _client.PutAsJsonAsync(
+                "/api/admin/settings",
+                SettingsPayload(
+                    storeName: "Esotera Test",
+                    freeShippingMin: 80m,
+                    freeShippingStates: [" sp ", "rj", "SP"],
+                    j3Price: 15m,
+                    j3Cutoff: 14,
+                    subsidyEnabled: true,
+                    subsidyAmount: 3m));
             ok.StatusCode.Should().Be(HttpStatusCode.OK);
             var updated = await ok.Content.ReadFromJsonAsync<AdminStoreSettingsDto>(JsonOptions);
             updated!.StoreName.Should().Be("Esotera Test");
@@ -641,6 +638,12 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
               "j3CutoffHour": 12,
               "shippingSubsidyEnabled": false,
               "shippingSubsidyAmount": 10,
+              "shippingOriginCep": "08061-420",
+              "packageLengthCm": 16,
+              "packageWidthCm": 11,
+              "packageHeightCm": 6,
+              "packageWeightGrams": 400,
+              "melhorEnvioQuoteEnabled": true,
               "id": 99,
               "couponDiscount": 99,
               "couponMinPurchase": 1
@@ -663,16 +666,9 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
     public async Task FreeShipping_UsesCsv_AndAfterCoupon()
     {
         await RestoreDefaultSettingsAsync();
-        await _client.PutAsJsonAsync("/api/admin/settings", new
-        {
-            storeName = "Esotera",
-            freeShippingMin = 99.90m,
-            freeShippingStates = new[] { "RJ" }, // SP not eligible
-            j3Price = 12m,
-            j3CutoffHour = 12,
-            shippingSubsidyEnabled = false,
-            shippingSubsidyAmount = 10m
-        });
+        await _client.PutAsJsonAsync(
+            "/api/admin/settings",
+            SettingsPayload(freeShippingMin: 99.90m, freeShippingStates: ["RJ"]));
 
         try
         {
@@ -724,16 +720,9 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
     public async Task Subsidy_WhenEnabled_ReducesShipping_NeverNegative()
     {
         await RestoreDefaultSettingsAsync();
-        await _client.PutAsJsonAsync("/api/admin/settings", new
-        {
-            storeName = "Esotera",
-            freeShippingMin = 9999m,
-            freeShippingStates = new[] { "SP" },
-            j3Price = 12m,
-            j3CutoffHour = 12,
-            shippingSubsidyEnabled = true,
-            shippingSubsidyAmount = 100m
-        });
+        await _client.PutAsJsonAsync(
+            "/api/admin/settings",
+            SettingsPayload(freeShippingMin: 9999m, freeShippingStates: ["SP"], subsidyEnabled: true, subsidyAmount: 100m));
 
         try
         {
@@ -755,16 +744,9 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
     public async Task Subsidy_WhenDisabled_DoesNotApply()
     {
         await RestoreDefaultSettingsAsync();
-        await _client.PutAsJsonAsync("/api/admin/settings", new
-        {
-            storeName = "Esotera",
-            freeShippingMin = 9999m,
-            freeShippingStates = new[] { "SP" },
-            j3Price = 12m,
-            j3CutoffHour = 12,
-            shippingSubsidyEnabled = false,
-            shippingSubsidyAmount = 100m
-        });
+        await _client.PutAsJsonAsync(
+            "/api/admin/settings",
+            SettingsPayload(freeShippingMin: 9999m, freeShippingStates: ["SP"], subsidyEnabled: false, subsidyAmount: 100m));
 
         try
         {
@@ -786,16 +768,9 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
     public async Task J3_UsesConfiguredPrice()
     {
         await RestoreDefaultSettingsAsync();
-        await _client.PutAsJsonAsync("/api/admin/settings", new
-        {
-            storeName = "Esotera",
-            freeShippingMin = 9999m,
-            freeShippingStates = new[] { "SP" },
-            j3Price = 17.50m,
-            j3CutoffHour = 12,
-            shippingSubsidyEnabled = false,
-            shippingSubsidyAmount = 10m
-        });
+        await _client.PutAsJsonAsync(
+            "/api/admin/settings",
+            SettingsPayload(freeShippingMin: 9999m, freeShippingStates: ["SP"], j3Price: 17.50m));
 
         try
         {

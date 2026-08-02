@@ -132,11 +132,12 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
             [new CreateOrderItemRequest(ProductId, 1, null)],
             new OrderAddressInput("01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
             null,
-            "j3",
+            "melhor_economico",
             "pix",
             null,
             null);
         var orderRes = await TestHelpers.PostOrderAsync(_client, orderReq);
+        orderRes.EnsureSuccessStatusCode();
         var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
         await TestHelpers.ForceOrderTotalAsync(_factory.Services, order!.Id, 50.00m);
 

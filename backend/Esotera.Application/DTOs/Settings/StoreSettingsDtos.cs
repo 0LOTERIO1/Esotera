@@ -18,6 +18,12 @@ public record AdminStoreSettingsDto(
     int J3CutoffHour,
     bool ShippingSubsidyEnabled,
     decimal ShippingSubsidyAmount,
+    string ShippingOriginCep,
+    decimal PackageLengthCm,
+    decimal PackageWidthCm,
+    decimal PackageHeightCm,
+    int PackageWeightGrams,
+    bool MelhorEnvioQuoteEnabled,
     DateTime UpdatedAtUtc
 );
 
@@ -28,5 +34,11 @@ public record UpdateStoreSettingsRequest(
     decimal J3Price,
     int J3CutoffHour,
     bool ShippingSubsidyEnabled,
-    decimal ShippingSubsidyAmount
+    decimal ShippingSubsidyAmount,
+    string ShippingOriginCep,
+    decimal PackageLengthCm,
+    decimal PackageWidthCm,
+    decimal PackageHeightCm,
+    int PackageWeightGrams,
+    bool MelhorEnvioQuoteEnabled
 );

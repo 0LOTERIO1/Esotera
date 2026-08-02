@@ -33,6 +33,19 @@ public class Order
     public string ShippingProvider { get; set; } = string.Empty;
     public int ShippingEstimatedDays { get; set; }
 
+    /// <summary>Snapshot mínimo da cotação (sem token/raw ME).</summary>
+    public int? ShippingCompanyId { get; set; }
+    public int? ShippingServiceId { get; set; }
+    public string? ShippingCarrierName { get; set; }
+    public string? ShippingServiceName { get; set; }
+    public decimal? ShippingOriginalPrice { get; set; }
+    public int? ShippingDeliveryMinDays { get; set; }
+    public int? ShippingDeliveryMaxDays { get; set; }
+    public string? ShippingQuoteEnvironment { get; set; }
+    public DateTime? ShippingQuotedAtUtc { get; set; }
+    public bool? ShippingFreeShippingApplied { get; set; }
+    public bool? ShippingSubsidyApplied { get; set; }
+
     public string ShipCep { get; set; } = string.Empty;
     public string ShipStreet { get; set; } = string.Empty;
     public string ShipNumber { get; set; } = string.Empty;

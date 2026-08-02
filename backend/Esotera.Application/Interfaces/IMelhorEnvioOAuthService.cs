@@ -20,7 +20,15 @@ public interface IMelhorEnvioOAuthService
     Task<MelhorEnvioStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Obtém access token válido (refresh lazy + lock). Para uso futuro em cotação.
+    /// Obtém access token válido (refresh lazy + lock). Auth apenas via OAuth (sem ACCESS_TOKEN env).
     /// </summary>
     Task<string?> GetValidAccessTokenAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Em resposta Unauthenticated: refresh controlado + retry uma vez (sem loop).
+    /// </summary>
+    Task<T> ExecuteWithTokenRetryAsync<T>(
+        Func<string, CancellationToken, Task<T>> action,
+        Func<T, bool> isUnauthenticated,
+        CancellationToken cancellationToken = default);
 }

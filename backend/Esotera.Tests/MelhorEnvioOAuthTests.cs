@@ -215,6 +215,7 @@ public class MelhorEnvioOAuthTests : IClassFixture<CustomWebApplicationFactory>
     public async Task Status_WhenDisconnected_ReturnsConnectedFalse_WithoutTokens()
     {
         using var factory = CreateIsolatedFactory();
+        await ShippingTestHelpers.ClearOAuthConnectionsAsync(factory.Services);
         var client = factory.CreateClient();
         var admin = await TestHelpers.GetAdminTokenAsync(client);
         TestHelpers.SetBearerToken(client, admin);

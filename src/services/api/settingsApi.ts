@@ -13,6 +13,12 @@ export type PublicStoreSettingsDto = {
 };
 
 export type AdminStoreSettingsDto = PublicStoreSettingsDto & {
+  shippingOriginCep: string;
+  packageLengthCm: number;
+  packageWidthCm: number;
+  packageHeightCm: number;
+  packageWeightGrams: number;
+  melhorEnvioQuoteEnabled: boolean;
   updatedAtUtc: string;
 };
 
@@ -24,6 +30,12 @@ export type UpdateStoreSettingsPayload = {
   j3CutoffHour: number;
   shippingSubsidyEnabled: boolean;
   shippingSubsidyAmount: number;
+  shippingOriginCep: string;
+  packageLengthCm: number;
+  packageWidthCm: number;
+  packageHeightCm: number;
+  packageWeightGrams: number;
+  melhorEnvioQuoteEnabled: boolean;
 };
 
 export const settingsApi = {

@@ -404,6 +404,12 @@ public class DevSeed
 #pragma warning restore CS0618
             ShippingSubsidyEnabled = false,
             ShippingSubsidyAmount = 10.00m,
+            ShippingOriginCep = "08061420",
+            PackageLengthCm = 16m,
+            PackageWidthCm = 11m,
+            PackageHeightCm = 6m,
+            PackageWeightGrams = 400,
+            MelhorEnvioQuoteEnabled = false,
             UpdatedAtUtc = DateTime.UtcNow
         };
 

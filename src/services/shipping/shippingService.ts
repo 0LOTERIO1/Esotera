@@ -1,13 +1,14 @@
 /**
  * Fachada de frete do frontend.
- *
- * Hoje: sempre usa cotação simulada (valores fixos por UF + J3 por faixas CEP).
- * Futuro: quando Melhor Envio / J3 estiverem configurados e validados,
- * tentar transportadora primeiro; em falha, NÃO inventar preço —
- * retornar erro seguro e opções vazias (checkout não quebra).
- *
- * Credenciais no .env.example (MELHOR_ENVIO_*, J3_*) ainda NÃO estão integradas.
+ * Em modo API: sempre POST /api/shipping/quote (nunca Melhor Envio no browser).
+ * Em modo mock: cotação simulada local.
  */
+import { isApiMode } from "@/config/dataMode";
+import {
+  mapQuoteOption,
+  quoteErrorMessage,
+  shippingQuoteApi,
+} from "@/services/api/shippingQuoteApi";
 import {
   isJ3CepEligible,
   qualifiesForFreeShipping,
@@ -20,46 +21,54 @@ import type {
   ShippingQuoteResult,
 } from "./types";
 
-const CARRIER_ERROR =
-  "Não foi possível calcular o frete com a transportadora. Tente novamente ou escolha outro endereço.";
+const GENERIC_ERROR = "Não foi possível calcular o frete. Tente novamente.";
 
-function carriersConfigured(): boolean {
-  // Preparação apenas — sem inventar integração.
-  // Ativar somente após o cliente fornecer credenciais + regras oficiais.
-  const melhor =
-    Boolean(process.env.NEXT_PUBLIC_MELHOR_ENVIO_ENABLED === "true") &&
-    Boolean(process.env.NEXT_PUBLIC_MELHOR_ENVIO_READY === "true");
-  const j3 =
-    Boolean(process.env.NEXT_PUBLIC_J3_ENABLED === "true") &&
-    Boolean(process.env.NEXT_PUBLIC_J3_READY === "true");
-  return melhor || j3;
-}
+async function quoteFromApi(
+  input: ShippingQuoteInput,
+): Promise<ShippingQuoteResult> {
+  try {
+    const dto = await shippingQuoteApi.quote({
+      destinationCep: input.cep,
+      state: input.state,
+      productsSubtotal: input.productsTotalAfterDiscount,
+    });
 
-async function tryCarrierQuote(): Promise<ShippingQuoteResult | null> {
-  if (!carriersConfigured()) return null;
-  // Placeholder: integração real ainda não implementada (faltam credenciais/API).
-  // Retornar null força o fallback simulado documentado.
-  return null;
+    if (!dto.ok || !dto.options?.length) {
+      return {
+        ok: false,
+        options: [],
+        source: "carrier",
+        errorMessage:
+          dto.message ||
+          (dto.errorCode === "invalid_cep"
+            ? "CEP inválido. Verifique o endereço."
+            : "Nenhuma modalidade disponível para este endereço. Tente outro CEP ou tente novamente."),
+      };
+    }
+
+    return {
+      ok: true,
+      options: dto.options.map(mapQuoteOption),
+      source: "carrier",
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      options: [],
+      source: "carrier",
+      errorMessage: quoteErrorMessage(err, GENERIC_ERROR),
+    };
+  }
 }
 
 export async function quoteShippingSafe(
   input: ShippingQuoteInput,
 ): Promise<ShippingQuoteResult> {
-  try {
-    const carrier = await tryCarrierQuote();
-    if (carrier) {
-      if (!carrier.ok || carrier.options.length === 0) {
-        // Falha de transportadora: não inventar valores; checkout continua com erro claro.
-        return {
-          ok: false,
-          options: [],
-          source: "carrier",
-          errorMessage: carrier.errorMessage ?? CARRIER_ERROR,
-        };
-      }
-      return carrier;
-    }
+  if (isApiMode()) {
+    return quoteFromApi(input);
+  }
 
+  try {
     const options = quoteSimulatedShipping(input);
     if (!options.length) {
       return {
@@ -76,7 +85,7 @@ export async function quoteShippingSafe(
       ok: false,
       options: [],
       source: "simulated",
-      errorMessage: "Não foi possível calcular o frete. Tente novamente.",
+      errorMessage: GENERIC_ERROR,
     };
   }
 }

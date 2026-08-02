@@ -116,8 +116,9 @@ function MelhorEnvioSection() {
         Melhor Envio
       </h2>
       <p className="mt-1 text-sm text-esotera-muted">
-        Conexão OAuth Sandbox (escopo shipping-calculate). Cotação real ainda
-        não está ativa.
+        Conexão OAuth Sandbox (escopo shipping-calculate). A cotação real depende
+        da flag &quot;Cotação Melhor Envio ativa&quot; nas configurações abaixo —
+        independente deste status OAuth e de MELHOR_ENVIO_ENABLED.
       </p>
 
       {loading ? (
@@ -185,6 +186,12 @@ function AdminSettingsForm() {
     j3CutoffHour: String(settings.j3CutoffHour),
     subsidyEnabled: settings.shippingSubsidy.enabled,
     subsidyAmount: String(settings.shippingSubsidy.amount),
+    shippingOriginCep: settings.shippingOriginCep ?? "08061-420",
+    packageLengthCm: String(settings.packageLengthCm ?? 16),
+    packageWidthCm: String(settings.packageWidthCm ?? 11),
+    packageHeightCm: String(settings.packageHeightCm ?? 6),
+    packageWeightGrams: String(settings.packageWeightGrams ?? 400),
+    melhorEnvioQuoteEnabled: settings.melhorEnvioQuoteEnabled ?? false,
   });
 
   useEffect(() => {
@@ -199,6 +206,12 @@ function AdminSettingsForm() {
           j3CutoffHour: String(settings.j3CutoffHour),
           subsidyEnabled: settings.shippingSubsidy.enabled,
           subsidyAmount: String(settings.shippingSubsidy.amount),
+          shippingOriginCep: settings.shippingOriginCep ?? "08061-420",
+          packageLengthCm: String(settings.packageLengthCm ?? 16),
+          packageWidthCm: String(settings.packageWidthCm ?? 11),
+          packageHeightCm: String(settings.packageHeightCm ?? 6),
+          packageWeightGrams: String(settings.packageWeightGrams ?? 400),
+          melhorEnvioQuoteEnabled: settings.melhorEnvioQuoteEnabled ?? false,
         });
         setLoading(false);
         return;
@@ -215,6 +228,12 @@ function AdminSettingsForm() {
           j3CutoffHour: String(admin.j3CutoffHour),
           subsidyEnabled: admin.shippingSubsidy.enabled,
           subsidyAmount: String(admin.shippingSubsidy.amount),
+          shippingOriginCep: admin.shippingOriginCep ?? "08061-420",
+          packageLengthCm: String(admin.packageLengthCm ?? 16),
+          packageWidthCm: String(admin.packageWidthCm ?? 11),
+          packageHeightCm: String(admin.packageHeightCm ?? 6),
+          packageWeightGrams: String(admin.packageWeightGrams ?? 400),
+          melhorEnvioQuoteEnabled: admin.melhorEnvioQuoteEnabled ?? false,
         });
         useSettingsStore.setState({ settings: admin });
       } catch (err) {
@@ -266,6 +285,12 @@ function AdminSettingsForm() {
         enabled: form.subsidyEnabled,
         amount: Number(form.subsidyAmount),
       },
+      shippingOriginCep: form.shippingOriginCep.trim(),
+      packageLengthCm: Number(form.packageLengthCm),
+      packageWidthCm: Number(form.packageWidthCm),
+      packageHeightCm: Number(form.packageHeightCm),
+      packageWeightGrams: Number(form.packageWeightGrams),
+      melhorEnvioQuoteEnabled: form.melhorEnvioQuoteEnabled,
     };
 
     if (
@@ -277,7 +302,15 @@ function AdminSettingsForm() {
       next.j3CutoffHour < 0 ||
       next.j3CutoffHour > 23 ||
       Number.isNaN(next.shippingSubsidy.amount) ||
-      next.shippingSubsidy.amount < 0
+      next.shippingSubsidy.amount < 0 ||
+      Number.isNaN(next.packageLengthCm!) ||
+      next.packageLengthCm! < 1 ||
+      Number.isNaN(next.packageWidthCm!) ||
+      next.packageWidthCm! < 1 ||
+      Number.isNaN(next.packageHeightCm!) ||
+      next.packageHeightCm! < 1 ||
+      !Number.isInteger(next.packageWeightGrams!) ||
+      next.packageWeightGrams! < 1
     ) {
       push("error", "Revise os valores numéricos.");
       return;
@@ -393,6 +426,77 @@ function AdminSettingsForm() {
             disabled={!form.subsidyEnabled}
           />
         </FormField>
+
+        <h2 className="mt-4 font-serif text-xl text-esotera-secondary">
+          Pacote e cotação Melhor Envio
+        </h2>
+        <FormField label="CEP de origem" id="shippingOriginCep">
+          <input
+            id="shippingOriginCep"
+            className={inputClassName}
+            value={form.shippingOriginCep}
+            onChange={(e) =>
+              setForm({ ...form, shippingOriginCep: e.target.value })
+            }
+          />
+        </FormField>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Comprimento (cm)" id="packageLengthCm">
+            <input
+              id="packageLengthCm"
+              className={inputClassName}
+              value={form.packageLengthCm}
+              onChange={(e) =>
+                setForm({ ...form, packageLengthCm: e.target.value })
+              }
+            />
+          </FormField>
+          <FormField label="Largura (cm)" id="packageWidthCm">
+            <input
+              id="packageWidthCm"
+              className={inputClassName}
+              value={form.packageWidthCm}
+              onChange={(e) =>
+                setForm({ ...form, packageWidthCm: e.target.value })
+              }
+            />
+          </FormField>
+          <FormField label="Altura (cm)" id="packageHeightCm">
+            <input
+              id="packageHeightCm"
+              className={inputClassName}
+              value={form.packageHeightCm}
+              onChange={(e) =>
+                setForm({ ...form, packageHeightCm: e.target.value })
+              }
+            />
+          </FormField>
+          <FormField label="Peso (g)" id="packageWeightGrams">
+            <input
+              id="packageWeightGrams"
+              className={inputClassName}
+              value={form.packageWeightGrams}
+              onChange={(e) =>
+                setForm({ ...form, packageWeightGrams: e.target.value })
+              }
+            />
+          </FormField>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-esotera-muted">
+          <input
+            type="checkbox"
+            checked={form.melhorEnvioQuoteEnabled}
+            onChange={(e) =>
+              setForm({ ...form, melhorEnvioQuoteEnabled: e.target.checked })
+            }
+          />
+          Cotação Melhor Envio ativa
+        </label>
+        <p className="text-xs text-esotera-muted">
+          Independente de MELHOR_ENVIO_ENABLED e do OAuth conectado. Padrão do
+          pacote: 16×11×6 cm, 400 g, CEP 08061-420.
+        </p>
+
         <div className="flex flex-wrap gap-2 pt-2">
           <Button type="button" onClick={() => void save()} disabled={saving}>
             {saving ? "Salvando…" : "Salvar"}
@@ -411,6 +515,12 @@ function AdminSettingsForm() {
                   j3CutoffHour: "12",
                   subsidyEnabled: false,
                   subsidyAmount: "10",
+                  shippingOriginCep: "08061-420",
+                  packageLengthCm: "16",
+                  packageWidthCm: "11",
+                  packageHeightCm: "6",
+                  packageWeightGrams: "400",
+                  melhorEnvioQuoteEnabled: false,
                 });
                 push("info", "Configurações restauradas ao padrão.");
               }}

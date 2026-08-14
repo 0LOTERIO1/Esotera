@@ -11,27 +11,36 @@ using Microsoft.Extensions.Options;
 namespace Esotera.Infrastructure.Services;
 
 /// <summary>
-/// Cotação centralizada: J3 (regras locais) + Melhor Envio sandbox (quando flag ativa).
-/// Sem fallback fictício ME. Falha ME não impede J3.
+/// Cotação centralizada: J3 real (coverage via IJ3Client) + Melhor Envio sandbox.
+/// Sem fallback fictício ME. Falha J3 omite só a opção j3; demais carriers seguem.
+/// Gate: Enabled primeiro (sem chamada client); depois config válida; coverage real.
+/// Preço = StandardPriceCents/100 — nunca preço legado de StoreSettings, nunca default 1299 implícito.
+/// Prazo J3: null/null ("Prazo a confirmar") — sem cutoff simulado nem faixas CEP legadas.
 /// </summary>
 public sealed class ShippingOptionsService : IShippingOptionsService
 {
     private readonly IMelhorEnvioOAuthService _oauth;
     private readonly IMelhorEnvioShipmentClient _shipmentClient;
+    private readonly IJ3Client _j3Client;
     private readonly MelhorEnvioOptions _meOptions;
+    private readonly J3ShippingOptions _j3Options;
     private readonly IClock _clock;
     private readonly ILogger<ShippingOptionsService> _logger;
 
     public ShippingOptionsService(
         IMelhorEnvioOAuthService oauth,
         IMelhorEnvioShipmentClient shipmentClient,
+        IJ3Client j3Client,
         IOptions<MelhorEnvioOptions> meOptions,
+        IOptions<J3ShippingOptions> j3Options,
         IClock clock,
         ILogger<ShippingOptionsService> logger)
     {
         _oauth = oauth;
         _shipmentClient = shipmentClient;
+        _j3Client = j3Client;
         _meOptions = meOptions.Value;
+        _j3Options = j3Options.Value;
         _clock = clock;
         _logger = logger;
     }
@@ -44,7 +53,7 @@ public sealed class ShippingOptionsService : IShippingOptionsService
         var quotedAt = _clock.UtcNow;
         var options = new List<NormalizedShippingOption>();
 
-        var j3 = TryBuildJ3Option(query, settings, quotedAt);
+        var j3 = await TryBuildJ3OptionAsync(query, quotedAt, cancellationToken);
         if (j3 is not null)
             options.Add(ShippingCommerceRules.Apply(j3, query.ProductsTotalAfterDiscount, query.State, settings));
 
@@ -89,38 +98,74 @@ public sealed class ShippingOptionsService : IShippingOptionsService
         return selected;
     }
 
-    private NormalizedShippingOption? TryBuildJ3Option(
+    /// <summary>
+    /// Provider J3 real: Enabled → config → CEP → IsServiceAreaAsync.
+    /// Sem faixas CEP simuladas, preço legado de StoreSettings, cutoff ou calendário útil legado.
+    /// </summary>
+    private async Task<NormalizedShippingOption?> TryBuildJ3OptionAsync(
         ShippingQuoteQuery query,
-        StoreSettings settings,
-        DateTime quotedAtUtc)
+        DateTime quotedAtUtc,
+        CancellationToken cancellationToken)
     {
-        var digits = query.DestinationCepDigits;
-        if (digits.Length != 8 || !SimulatedShippingService.IsJ3CepEligible(digits))
+        // 1) Gate Enabled primeiro — nunca chamar client com flag off.
+        if (!_j3Options.Enabled)
             return null;
 
-        var spNow = SimulatedShippingService.GetSaoPauloLocalTime(_clock.UtcNow);
-        if (!J3WorkingDays.IsWorkingDay(spNow))
+        // 2) Config mínima para oferecer J3 real (sem simulação).
+        if (!_j3Options.HasValidRealQuoteConfig)
+        {
+            _logger.LogWarning(
+                "J3 quote omitted: configuration incomplete (Enabled=true but URL/token/companyGroup/price invalid)");
+            return null;
+        }
+
+        // 3) CEP inválido → não chamar J3.
+        var digits = BrazilianCep.TryNormalize(query.DestinationCepDigits);
+        if (digits is null)
             return null;
 
-        var cutoff = settings.J3CutoffHour is >= 0 and <= 23 ? settings.J3CutoffHour : 12;
-        var days = spNow.Hour < cutoff ? 0 : 1;
+        // 4) Coverage real — falha operacional omite J3 (não 500 no quote).
+        bool inServiceArea;
+        try
+        {
+            inServiceArea = await _j3Client.IsServiceAreaAsync(digits, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (J3ApiException ex)
+        {
+            _logger.LogWarning(
+                "J3 quote omitted: coverage call failed (operation={Operation}, http={HttpStatus})",
+                ex.OperationName,
+                ex.HttpStatus);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "J3 quote omitted: unexpected coverage failure");
+            return null;
+        }
 
+        if (!inServiceArea)
+            return null;
+
+        var price = _j3Options.StandardPriceReais;
         return new NormalizedShippingOption
         {
             ShippingMethodId = ShippingMethod.J3,
             Provider = ShippingMethod.GetProvider(ShippingMethod.J3),
             Name = "J3 Entregas",
-            Description = days == 0
-                ? "Pedido até o horário-limite: entrega no mesmo dia (dias úteis)."
-                : "Pedido após o horário-limite: entrega no próximo dia útil.",
+            Description = "Prazo a confirmar",
             CompanyId = null,
             ServiceId = null,
             CarrierName = "J3",
             ServiceName = "J3 Entregas",
-            OriginalPrice = settings.J3Price,
-            FinalPrice = settings.J3Price,
-            EstimatedDaysMin = days,
-            EstimatedDaysMax = days,
+            OriginalPrice = price,
+            FinalPrice = price,
+            EstimatedDaysMin = null,
+            EstimatedDaysMax = null,
             FreeShippingApplied = false,
             SubsidyApplied = false,
             QuoteEnvironment = null,

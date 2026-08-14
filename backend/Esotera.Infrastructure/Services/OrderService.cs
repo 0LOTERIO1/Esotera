@@ -169,7 +169,8 @@ public class OrderService : IOrderService
                     savedAddress.Complement,
                     savedAddress.Neighborhood,
                     savedAddress.City,
-                    savedAddress.State
+                    savedAddress.State,
+                    savedAddress.IsResidentialAddress
                 );
             }
             else if (request.Address != null)
@@ -179,6 +180,14 @@ public class OrderService : IOrderService
             else
             {
                 throw new ValidationException("address", "Endereço é obrigatório.");
+            }
+
+            if (string.Equals(request.ShippingMethodId, ShippingMethod.J3, StringComparison.OrdinalIgnoreCase)
+                && address.IsResidentialAddress is null)
+            {
+                throw new ValidationException(
+                    "isResidentialAddress",
+                    "Informe se o endereço é Residencial ou Comercial para usar a entrega J3.");
             }
 
             decimal discount = 0;
@@ -207,6 +216,7 @@ public class OrderService : IOrderService
                 settings);
 
             var shippingPrice = shippingOption.FinalPrice;
+            // Pass-through: null = prazo desconhecido. Sem ?? 0 / GetValueOrDefault / default(int).
             var estimatedDays = shippingOption.EstimatedDaysMax;
 
             var total = subtotalAfterDiscount + Math.Max(0, shippingPrice);
@@ -259,6 +269,7 @@ public class OrderService : IOrderService
                 ShipNeighborhood = address.Neighborhood.Trim(),
                 ShipCity = address.City.Trim(),
                 ShipState = address.State.Trim().ToUpperInvariant(),
+                ShippingIsResidentialAddress = address.IsResidentialAddress,
                 PaymentMethod = request.PaymentMethod,
                 PaymentInstallments = request.PaymentMethod == PaymentMethod.Card
                     ? request.Installments

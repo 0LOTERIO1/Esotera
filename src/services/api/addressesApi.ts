@@ -12,6 +12,7 @@ type ApiAddress = {
   city: string;
   state: string;
   isPrimary: boolean;
+  isResidentialAddress?: boolean | null;
 };
 
 function mapAddress(apiAddress: ApiAddress): SavedAddress {
@@ -25,6 +26,11 @@ function mapAddress(apiAddress: ApiAddress): SavedAddress {
     city: apiAddress.city,
     state: apiAddress.state,
     isPrimary: apiAddress.isPrimary,
+    isResidentialAddress:
+      apiAddress.isResidentialAddress === true ||
+      apiAddress.isResidentialAddress === false
+        ? apiAddress.isResidentialAddress
+        : null,
   };
 }
 
@@ -39,6 +45,11 @@ function toRequestBody(input: AddressInput) {
     city: normalized.city,
     state: normalized.state,
     isPrimary: Boolean(normalized.isPrimary),
+    isResidentialAddress:
+      normalized.isResidentialAddress === true ||
+      normalized.isResidentialAddress === false
+        ? normalized.isResidentialAddress
+        : null,
   };
 }
 

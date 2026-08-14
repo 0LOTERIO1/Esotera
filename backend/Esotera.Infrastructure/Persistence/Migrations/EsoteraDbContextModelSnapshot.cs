@@ -48,6 +48,9 @@ namespace Esotera.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsPrimary")
                         .HasColumnType("boolean");
 
+                    b.Property<bool?>("IsResidentialAddress")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Neighborhood")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -230,6 +233,76 @@ namespace Esotera.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("CouponUsages");
+                });
+
+            modelBuilder.Entity("Esotera.Domain.Entities.J3Fulfillment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("J3DeliveryPointId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("J3OrderCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("J3OrderId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("J3StampUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("J3TrackingNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastErrorAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("J3OrderId")
+                        .IsUnique()
+                        .HasFilter("\"J3OrderId\" IS NOT NULL");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("J3Fulfillments", (string)null);
                 });
 
             modelBuilder.Entity("Esotera.Domain.Entities.MelhorEnvioConnection", b =>
@@ -506,10 +579,13 @@ namespace Esotera.Infrastructure.Persistence.Migrations
                     b.Property<int?>("ShippingDeliveryMinDays")
                         .HasColumnType("integer");
 
-                    b.Property<int>("ShippingEstimatedDays")
+                    b.Property<int?>("ShippingEstimatedDays")
                         .HasColumnType("integer");
 
                     b.Property<bool?>("ShippingFreeShippingApplied")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("ShippingIsResidentialAddress")
                         .HasColumnType("boolean");
 
                     b.Property<string>("ShippingMethodId")
@@ -991,6 +1067,17 @@ namespace Esotera.Infrastructure.Persistence.Migrations
                     b.Navigation("Coupon");
                 });
 
+            modelBuilder.Entity("Esotera.Domain.Entities.J3Fulfillment", b =>
+                {
+                    b.HasOne("Esotera.Domain.Entities.Order", "Order")
+                        .WithOne("J3Fulfillment")
+                        .HasForeignKey("Esotera.Domain.Entities.J3Fulfillment", "OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
             modelBuilder.Entity("Esotera.Domain.Entities.Order", b =>
                 {
                     b.HasOne("Esotera.Domain.Entities.User", "User")
@@ -1070,6 +1157,8 @@ namespace Esotera.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Esotera.Domain.Entities.Order", b =>
                 {
                     b.Navigation("Items");
+
+                    b.Navigation("J3Fulfillment");
 
                     b.Navigation("StatusHistory");
                 });

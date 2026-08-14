@@ -14,8 +14,8 @@ export type ShippingQuoteOptionDto = {
   price: number;
   originalPrice: number;
   estimatedDays: string;
-  estimatedDaysMin: number;
-  estimatedDaysMax: number;
+  estimatedDaysMin: number | null;
+  estimatedDaysMax: number | null;
   description: string;
   freeShippingApplied: boolean;
   subsidyApplied: boolean;
@@ -37,7 +37,8 @@ export function mapQuoteOption(dto: ShippingQuoteOptionDto): ShippingOption {
     originalPrice: dto.originalPrice,
     estimatedDays: dto.estimatedDays,
     description: dto.description,
-    isSameDay: dto.estimatedDaysMin === 0,
+    // null !== 0 → false; 0 legítimo do provider → true (nunca tratar null como same-day)
+    isSameDay: dto.estimatedDaysMin != null && dto.estimatedDaysMin === 0,
   };
 }
 

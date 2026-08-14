@@ -21,7 +21,7 @@ import {
 import type { PaymentMethod, SavedAddress, ShippingOption } from "@/types";
 import { Price } from "@/components/ui/Price";
 import { useToastStore } from "@/stores/toastStore";
-import { formatAddressLines } from "@/utils/address";
+import { formatAddressLines, hasResidentialAddressType } from "@/utils/address";
 import { validateCep } from "@/utils/validation";
 import { ApiError } from "@/services/api/apiClient";
 import {
@@ -219,6 +219,16 @@ export default function CheckoutPage() {
         push("error", "Selecione uma modalidade de entrega.");
         return;
       }
+      if (
+        selectedShipping.id === "j3" &&
+        !hasResidentialAddressType(selectedAddress)
+      ) {
+        push(
+          "error",
+          "Edite o endereço e informe se é Residencial ou Comercial para usar a entrega J3.",
+        );
+        return;
+      }
     }
     setStep((s) => Math.min(s + 1, steps.length - 1));
   }
@@ -242,6 +252,17 @@ export default function CheckoutPage() {
     // Modo API: somente addressId do usuário autenticado (sem endereço inline)
     if (isApiMode() && !selectedAddress.id) {
       push("error", "Selecione um endereço de entrega válido da sua conta.");
+      return;
+    }
+
+    if (
+      selectedShipping.id === "j3" &&
+      !hasResidentialAddressType(selectedAddress)
+    ) {
+      push(
+        "error",
+        "Edite o endereço e informe se é Residencial ou Comercial para usar a entrega J3.",
+      );
       return;
     }
 

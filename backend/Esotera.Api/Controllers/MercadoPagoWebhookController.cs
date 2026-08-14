@@ -52,7 +52,9 @@ public class MercadoPagoWebhookController : ControllerBase
         }
         catch (Exception ex)
         {
-            // Responde 200 em erros recuperáveis para evitar storm; loga sem secrets.
+            // Semântica HTTP inalterada: 200 mesmo em falha (evita storm de retry do MP).
+            // Transaction local J3: se EnsurePending falha, Order+histórico também rollback
+            // — 200 aqui NÃO deixa payment_approved sem obrigação.
             _logger.LogError(ex, "Falha ao processar webhook Mercado Pago.");
         }
 

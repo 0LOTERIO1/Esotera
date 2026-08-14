@@ -31,7 +31,8 @@ public class Order
     public string ShippingMethodId { get; set; } = string.Empty;
     public string ShippingMethodName { get; set; } = string.Empty;
     public string ShippingProvider { get; set; } = string.Empty;
-    public int ShippingEstimatedDays { get; set; }
+    /// <summary>Prazo em dias úteis; null = desconhecido ("Prazo a confirmar").</summary>
+    public int? ShippingEstimatedDays { get; set; }
 
     /// <summary>Snapshot mínimo da cotação (sem token/raw ME).</summary>
     public int? ShippingCompanyId { get; set; }
@@ -53,6 +54,12 @@ public class Order
     public string ShipNeighborhood { get; set; } = string.Empty;
     public string ShipCity { get; set; } = string.Empty;
     public string ShipState { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Snapshot de Address.IsResidentialAddress no CreateOrder (null = legado / não informado).
+    /// Fulfillment futuro usa este snapshot — não relê Address atual.
+    /// </summary>
+    public bool? ShippingIsResidentialAddress { get; set; }
 
     public string PaymentMethod { get; set; } = string.Empty;
     public int? PaymentInstallments { get; set; }
@@ -82,4 +89,5 @@ public class Order
     public User User { get; set; } = null!;
     public ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();
     public ICollection<OrderStatusHistory> StatusHistory { get; set; } = new List<OrderStatusHistory>();
+    public J3Fulfillment? J3Fulfillment { get; set; }
 }

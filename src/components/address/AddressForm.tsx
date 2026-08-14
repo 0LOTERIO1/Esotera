@@ -23,6 +23,8 @@ export type AddressFormValues = {
   city: string;
   state: string;
   isPrimary: boolean;
+  /** null = ainda não escolhido (legado ou formulário novo) */
+  isResidentialAddress: boolean | null;
 };
 
 export function emptyAddressFormValues(
@@ -37,6 +39,7 @@ export function emptyAddressFormValues(
     city: "",
     state: "SP",
     isPrimary: false,
+    isResidentialAddress: null,
     ...overrides,
   };
 }
@@ -53,6 +56,11 @@ export function savedAddressToFormValues(
     city: address.city,
     state: address.state,
     isPrimary: address.isPrimary,
+    isResidentialAddress:
+      address.isResidentialAddress === true ||
+      address.isResidentialAddress === false
+        ? address.isResidentialAddress
+        : null,
   };
 }
 
@@ -66,6 +74,7 @@ export function toAddressInput(values: AddressFormValues): AddressInput {
     city: values.city,
     state: values.state,
     isPrimary: values.isPrimary,
+    isResidentialAddress: values.isResidentialAddress,
   };
 }
 
@@ -313,6 +322,39 @@ export function AddressForm({
           />
         </FormField>
       </div>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-esotera-secondary">
+          Tipo de endereço <span className="text-esotera-error">*</span>
+        </legend>
+        <div className="flex flex-wrap gap-4 text-sm text-esotera-muted">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name={id("residential")}
+              checked={form.isResidentialAddress === true}
+              onChange={() => setField("isResidentialAddress", true)}
+              disabled={submitting}
+            />
+            Residencial
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name={id("residential")}
+              checked={form.isResidentialAddress === false}
+              onChange={() => setField("isResidentialAddress", false)}
+              disabled={submitting}
+            />
+            Comercial
+          </label>
+        </div>
+        {fieldErrors.isResidentialAddress ? (
+          <p role="alert" className="text-sm text-esotera-error">
+            {fieldErrors.isResidentialAddress}
+          </p>
+        ) : null}
+      </fieldset>
 
       {showPrimaryOption ? (
         <label className="flex items-center gap-2 text-sm text-esotera-muted">

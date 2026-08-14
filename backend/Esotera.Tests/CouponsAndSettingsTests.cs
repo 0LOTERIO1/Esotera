@@ -765,8 +765,9 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
     }
 
     [Fact]
-    public async Task J3_UsesConfiguredPrice()
+    public async Task J3_UsesStandardPriceCents_NotStoreSettingsJ3Price()
     {
+        // StoreSettings.J3Price alterado de propósito; cotação/pedido usam J3_STANDARD_PRICE_CENTS (1299 fake nos testes).
         await RestoreDefaultSettingsAsync();
         await _client.PutAsJsonAsync(
             "/api/admin/settings",
@@ -778,27 +779,22 @@ public class CouponsAndSettingsTests : IClassFixture<CustomWebApplicationFactory
                 _client, $"j3p{Guid.NewGuid():N}@test.com");
             TestHelpers.SetBearerToken(_client, token);
 
-            // J3 only available on weekdays — skip if weekend in SP timezone
-            var spNow = Esotera.Infrastructure.Services.SimulatedShippingService
-                .GetSaoPauloLocalTime(DateTime.UtcNow);
-            if (spNow.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-                return;
-
             var request = new CreateOrderRequest(
                 [new CreateOrderItemRequest(ProductWaitePocketId, 1, null)],
                 new OrderAddressInput(
-                    "01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
+                    "01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP",
+                    IsResidentialAddress: true),
                 null,
                 "j3",
                 "pix",
                 null,
                 null);
             var response = await TestHelpers.PostOrderAsync(_client, request);
-            if (response.StatusCode != HttpStatusCode.Created)
-                return; // CEP eligibility / working day edge
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
 
             var order = await response.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
-            order!.ShippingPrice.Should().Be(17.50m);
+            order!.ShippingPrice.Should().Be(12.99m);
+            order.ShippingPrice.Should().NotBe(17.50m);
         }
         finally
         {

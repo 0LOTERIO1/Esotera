@@ -54,7 +54,6 @@ function MelhorEnvioSection() {
 
   useEffect(() => {
     if (!apiMode) {
-      setLoading(false);
       return;
     }
     let cancelled = false;

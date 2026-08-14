@@ -80,7 +80,7 @@ public record AdminOrderShippingDto(
     string MethodId,
     string MethodName,
     string Provider,
-    int EstimatedDays
+    int? EstimatedDays
 );
 
 public record AdminOrderPaymentDto(

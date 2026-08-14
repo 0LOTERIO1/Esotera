@@ -6,6 +6,7 @@ import type {
   Address,
 } from "@/types";
 import type { OrderListItem } from "@/services/api/ordersApi.types";
+import { formatEstimatedDays } from "@/utils/format";
 import { normalizeProductImageUrl } from "@/utils/productImage";
 
 /** Contratos crus da API de pedidos (fonte de verdade no modo API). */
@@ -33,7 +34,7 @@ export type ApiOrderDto = {
     methodId: string;
     methodName: string;
     provider: string;
-    estimatedDays: number;
+    estimatedDays: number | null;
   };
   payment: {
     method: string;
@@ -61,12 +62,6 @@ export type ApiOrderListItemDto = {
   customerName: string;
   createdAt: string;
 };
-
-function formatEstimatedDays(days: number): string {
-  if (days <= 0) return "Hoje (mesmo dia)";
-  if (days === 1) return "1 dia útil";
-  return `${days} dias úteis`;
-}
 
 /**
  * Mapper único OrderDto (API) → tipos do frontend.

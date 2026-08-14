@@ -23,6 +23,7 @@ public class EsoteraDbContext : DbContext
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<MelhorEnvioConnection> MelhorEnvioConnections => Set<MelhorEnvioConnection>();
     public DbSet<MelhorEnvioOAuthState> MelhorEnvioOAuthStates => Set<MelhorEnvioOAuthState>();
+    public DbSet<J3Fulfillment> J3Fulfillments => Set<J3Fulfillment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

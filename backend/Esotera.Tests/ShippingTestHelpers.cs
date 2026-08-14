@@ -67,6 +67,9 @@ internal static class ShippingTestHelpers
     public static FakeMelhorEnvioShipmentClient GetShipmentFake(IServiceProvider rootServices) =>
         rootServices.GetRequiredService<FakeMelhorEnvioShipmentClient>();
 
+    public static FakeJ3Client GetJ3Fake(IServiceProvider rootServices) =>
+        rootServices.GetRequiredService<FakeJ3Client>();
+
     public static object DefaultAdminSettingsPayload(
         bool melhorEnvioQuoteEnabled = false,
         decimal freeShippingMin = 99.90m,

@@ -49,5 +49,5 @@ COPY --from=publish /app/publish .
 USER $APP_UID
 
 # Bind to Render PORT (fallback 8080 locally).
-# Program.cs still runs Database.MigrateAsync() on startup.
+# Schema: only if DB_AUTO_MIGRATE=true (default false — startup does not migrate).
 ENTRYPOINT ["sh", "-c", "exec dotnet Esotera.Api.dll --urls http://0.0.0.0:${PORT:-8080}"]

@@ -23,8 +23,8 @@ public record ShippingQuoteOptionDto(
     decimal Price,
     decimal OriginalPrice,
     string EstimatedDays,
-    int EstimatedDaysMin,
-    int EstimatedDaysMax,
+    int? EstimatedDaysMin,
+    int? EstimatedDaysMax,
     string Description,
     bool FreeShippingApplied,
     bool SubsidyApplied

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Esotera.Api;
 using Esotera.Api.Middleware;
 using Esotera.Api.Services;
 using Esotera.Application;
@@ -183,8 +184,16 @@ try
     {
         using var scope = app.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
-        
-        await context.Database.MigrateAsync();
+
+        if (DatabaseAutoMigrate.ShouldApplyAtStartup(app.Environment.EnvironmentName, builder.Configuration))
+        {
+            Log.Information("Applying database migrations at startup.");
+            await context.Database.MigrateAsync();
+        }
+        else
+        {
+            Log.Information("Database automatic migrations are disabled.");
+        }
 
         // Categorias básicas (+ produto de referência) — sempre, inclusive produção.
         var catalogBootstrap = scope.ServiceProvider.GetRequiredService<CatalogBootstrap>();

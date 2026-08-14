@@ -12,6 +12,7 @@ import {
   Settings,
   ArrowLeft,
   Mail,
+  Truck,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -25,6 +26,7 @@ const nav = [
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/cupons", label: "Cupons", icon: Ticket },
   { href: "/admin/newsletter", label: "Newsletter", icon: Mail },
+  { href: "/admin/j3-fulfillments", label: "Entregas J3", icon: Truck },
   { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
 ];
 

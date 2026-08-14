@@ -1,3 +1,4 @@
+import { formatEstimatedDays } from "@/utils/format";
 import { normalizeProductImageUrl } from "@/utils/productImage";
 import type {
   AdminCustomer,
@@ -9,12 +10,6 @@ import type {
   AdminSoldProduct,
 } from "./adminTypes";
 import type { OrderStatus, PaymentMethod } from "@/types";
-
-function formatEstimatedDays(days: number): string {
-  if (days <= 0) return "Hoje (mesmo dia)";
-  if (days === 1) return "1 dia útil";
-  return `${days} dias úteis`;
-}
 
 export function mapAdminDashboard(api: {
   totalOrders: number;
@@ -174,7 +169,7 @@ export function mapAdminOrderDetail(api: {
     methodId: string;
     methodName: string;
     provider: string;
-    estimatedDays: number;
+    estimatedDays: number | null;
   };
   payment: {
     method: string;

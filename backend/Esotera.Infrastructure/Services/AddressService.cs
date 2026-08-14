@@ -60,6 +60,7 @@ public class AddressService : IAddressService
             City = request.City.Trim(),
             State = request.State.ToUpper().Trim(),
             IsPrimary = request.IsPrimary,
+            IsResidentialAddress = request.IsResidentialAddress,
             CreatedAtUtc = DateTime.UtcNow
         };
 
@@ -82,6 +83,10 @@ public class AddressService : IAddressService
         if (request.Neighborhood != null) address.Neighborhood = request.Neighborhood.Trim();
         if (request.City != null) address.City = request.City.Trim();
         if (request.State != null) address.State = request.State.ToUpper().Trim();
+
+        // Só atualiza quando o cliente envia o campo (não inventar default em legado).
+        if (request.IsResidentialAddress.HasValue)
+            address.IsResidentialAddress = request.IsResidentialAddress;
 
         if (request.IsPrimary == true && !address.IsPrimary)
         {
@@ -139,6 +144,7 @@ public class AddressService : IAddressService
         address.Neighborhood,
         address.City,
         address.State,
-        address.IsPrimary
+        address.IsPrimary,
+        address.IsResidentialAddress
     );
 }

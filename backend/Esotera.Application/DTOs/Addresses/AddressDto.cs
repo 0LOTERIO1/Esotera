@@ -9,7 +9,8 @@ public record AddressDto(
     string Neighborhood,
     string City,
     string State,
-    bool IsPrimary
+    bool IsPrimary,
+    bool? IsResidentialAddress
 );
 
 public record CreateAddressRequest(
@@ -20,7 +21,8 @@ public record CreateAddressRequest(
     string Neighborhood,
     string City,
     string State,
-    bool IsPrimary = false
+    bool IsPrimary = false,
+    bool? IsResidentialAddress = null
 );
 
 public record UpdateAddressRequest(
@@ -31,5 +33,6 @@ public record UpdateAddressRequest(
     string? Neighborhood,
     string? City,
     string? State,
-    bool? IsPrimary
+    bool? IsPrimary,
+    bool? IsResidentialAddress = null
 );

@@ -157,7 +157,6 @@ public class MelhorEnvioQuoteTests
         fake.Reset();
         fake.TimedOut = true;
 
-        var spNow = SimulatedShippingService.GetSaoPauloLocalTime(DateTime.UtcNow);
         var response = await client.PostAsJsonAsync("/api/shipping/quote", new
         {
             destinationCep = "01310100",
@@ -168,8 +167,7 @@ public class MelhorEnvioQuoteTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<ShippingQuoteResponse>(JsonOptions);
         body!.Options.Should().NotContain(o => o.Id.StartsWith("melhor_"));
-        if (spNow.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))
-            body.Options.Should().Contain(o => o.Id == "j3");
+        body.Options.Should().Contain(o => o.Id == "j3");
     }
 
     [Fact]
@@ -341,10 +339,6 @@ public class MelhorEnvioQuoteTests
         var fake = ShippingTestHelpers.GetShipmentFake(factory.Services);
         fake.Reset();
         fake.NetworkError = true;
-
-        var spNow = SimulatedShippingService.GetSaoPauloLocalTime(DateTime.UtcNow);
-        if (spNow.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-            return;
 
         var response = await client.PostAsJsonAsync("/api/shipping/quote", new
         {

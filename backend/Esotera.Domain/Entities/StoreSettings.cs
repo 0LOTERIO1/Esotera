@@ -6,6 +6,11 @@ public class StoreSettings
     public string StoreName { get; set; } = "Esotera";
     public decimal FreeShippingMin { get; set; } = 99.90m;
     public string FreeShippingStatesCsv { get; set; } = "SP,RJ,MG,ES,PR,SC,RS";
+    /// <summary>
+    /// Preço J3 legado (admin/settings). NÃO é a fonte do provider real
+    /// (usar J3ShippingOptions.StandardPriceCents / J3_STANDARD_PRICE_CENTS). Ainda usado em
+    /// SimulatedShippingService e OrderService.J3PriceSnapshot (metadado legado).
+    /// </summary>
     public decimal J3Price { get; set; } = 12.00m;
     public int J3CutoffHour { get; set; } = 12;
     /// <summary>LEGADO — não usar nas regras comerciais. Fonte oficial: tabela Coupons.</summary>

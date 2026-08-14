@@ -18,17 +18,20 @@ public class PaymentService : IPaymentService
     private readonly EsoteraDbContext _context;
     private readonly IMercadoPagoClient _mp;
     private readonly MercadoPagoOptions _options;
+    private readonly IJ3FulfillmentService _j3Fulfillment;
     private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
         EsoteraDbContext context,
         IMercadoPagoClient mp,
         IOptions<MercadoPagoOptions> options,
+        IJ3FulfillmentService j3Fulfillment,
         ILogger<PaymentService> logger)
     {
         _context = context;
         _mp = mp;
         _options = options.Value;
+        _j3Fulfillment = j3Fulfillment;
         _logger = logger;
     }
 
@@ -137,7 +140,7 @@ public class PaymentService : IPaymentService
             snapshot.StatusDetail,
             "Order Pix criada no Mercado Pago");
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await PersistOrderAndJ3PendingAtomicallyAsync(order, cancellationToken);
         return MapResponse(order, snapshot);
     }
 
@@ -296,6 +299,9 @@ public class PaymentService : IPaymentService
             _logger.LogInformation(
                 "Webhook MP repetido ignorado (idempotente) para pedido {OrderId}.",
                 order.Id);
+            // Mesmo request não duplica EnsurePending. Webhook repetido repara Pending ausente
+            // (janela SaveChanges approved → falha EnsurePending) sem HTTP 5xx / retry storm.
+            await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
             return;
         }
 
@@ -312,7 +318,8 @@ public class PaymentService : IPaymentService
             mpOrder.StatusDetail,
             $"Webhook MP order: {mpOrder.Status}/{mpOrder.StatusDetail}");
 
-        await _context.SaveChangesAsync(cancellationToken);
+        // GetOrderAsync (HTTP MP) já terminou. Transaction só banco local.
+        await PersistOrderAndJ3PendingAtomicallyAsync(order, cancellationToken);
         _logger.LogInformation(
             "Pedido {OrderId} atualizado via webhook MP (OrderId={MpOrderId} Status={Status} StatusDetail={StatusDetail}).",
             order.Id,
@@ -320,6 +327,42 @@ public class PaymentService : IPaymentService
             mpOrder.Status,
             mpOrder.StatusDetail);
     }
+
+    /// <summary>
+    /// J3 + payment_approved (relacional): Order + histórico + Pending na mesma transaction.
+    /// PAC/SEDEX e InMemory: SaveChanges + EnsurePending sem transaction extra.
+    /// Zero HTTP dentro da transaction.
+    /// </summary>
+    private async Task PersistOrderAndJ3PendingAtomicallyAsync(
+        Domain.Entities.Order order,
+        CancellationToken cancellationToken)
+    {
+        var j3Approved = order.Status == OrderStatus.PaymentApproved
+            && string.Equals(order.ShippingMethodId, ShippingMethod.J3, StringComparison.OrdinalIgnoreCase);
+
+        if (!j3Approved || !_context.Database.IsRelational())
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
+            return;
+        }
+
+        await using var tx = await _context.Database.BeginTransactionAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
+        await tx.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Invariante: payment_approved AND ShippingMethodId == j3 → exatamente um J3Fulfillment.
+    /// J3_FULFILLMENT_ENABLED não participa. Zero HTTP J3 / zero processor.
+    /// </summary>
+    private Task EnsureJ3FulfillmentPendingIfApprovedAsync(
+        Domain.Entities.Order order,
+        CancellationToken cancellationToken) =>
+        order.Status == OrderStatus.PaymentApproved
+            ? _j3Fulfillment.EnsurePendingAsync(order.Id, cancellationToken)
+            : Task.CompletedTask;
 
     private bool CommercialCheckoutAllowedInCurrentEnvironment()
     {
@@ -381,7 +424,9 @@ public class PaymentService : IPaymentService
 
         var from = order.Status;
         order.Status = target;
-        order.StatusHistory.Add(new Domain.Entities.OrderStatusHistory
+        // DbSet.Add: Guid PK em entidade nova na coleção de Order já tracked vira Modified
+        // (UPDATE 0 rows) no SQLite/Postgres; InMemory ignora. Webhook respondia 200 sem persistir.
+        _context.OrderStatusHistories.Add(new Domain.Entities.OrderStatusHistory
         {
             Id = Guid.NewGuid(),
             OrderId = order.Id,

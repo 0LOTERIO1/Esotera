@@ -23,5 +23,6 @@ public record OrderAddressInput(
     string? Complement,
     string Neighborhood,
     string City,
-    string State
+    string State,
+    bool? IsResidentialAddress = null
 );

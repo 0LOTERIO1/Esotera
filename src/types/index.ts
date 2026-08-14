@@ -50,6 +50,8 @@ export type Address = {
   neighborhood: string;
   city: string;
   state: string;
+  /** true=residencial, false=comercial, null/undefined=legado sem captura */
+  isResidentialAddress?: boolean | null;
 };
 
 /** Endereço persistido na API / lista da conta */
@@ -61,6 +63,8 @@ export type SavedAddress = Address & {
 /** Payload de criação/edição (sem id; isPrimary opcional) */
 export type AddressInput = Address & {
   isPrimary?: boolean;
+  /** Obrigatório em formulários novos; legado pode omitir */
+  isResidentialAddress?: boolean | null;
 };
 
 export type UserRole = "customer" | "admin";

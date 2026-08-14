@@ -43,7 +43,8 @@ public class OrderIdempotencyTests : IClassFixture<CustomWebApplicationFactory>
         new(
             [new CreateOrderItemRequest(productId, qty, null)],
             address ?? new OrderAddressInput(
-                "01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
+                "01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP",
+                IsResidentialAddress: shipping == "j3" ? true : null),
             null,
             shipping,
             payment,
@@ -502,6 +503,7 @@ public class OrderIdempotencyTests : IClassFixture<CustomWebApplicationFactory>
             ShippingSubsidyEnabled = false
         };
 
+        // Legado SimulatedShippingService ainda usa faixas/cutoff — path separado do quote real.
         var (price, days) = shipping.Quote("j3", "01310100", "SP", 50m, settings);
         price.Should().Be(12m);
         days.Should().Be(0);
@@ -510,35 +512,43 @@ public class OrderIdempotencyTests : IClassFixture<CustomWebApplicationFactory>
             _client, $"j3ok{Guid.NewGuid():N}@test.com");
         TestHelpers.SetBearerToken(_client, token);
 
-        // Integração: se o relógio real for dia útil, deve criar; senão 400.
+        // Integração real (FakeJ3Client coverage=true): CreateOrder j3 deve criar.
         var response = await TestHelpers.PostOrderAsync(
             _client, BaseRequest(ProductWaitePocketId, shipping: "j3"));
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.BadRequest);
-        if (response.StatusCode == HttpStatusCode.Created)
-        {
-            var order = await response.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
-            order!.Shipping.MethodId.Should().Be("j3");
-        }
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var order = await response.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+        order!.Shipping.MethodId.Should().Be("j3");
     }
 
     [Fact]
     public async Task J3_IneligibleCep_Rejected()
     {
-        var (token, _) = await TestHelpers.RegisterNewUserAsync(
-            _client, $"j3bad{Guid.NewGuid():N}@test.com");
-        TestHelpers.SetBearerToken(_client, token);
+        var j3Fake = ShippingTestHelpers.GetJ3Fake(_factory.Services);
+        j3Fake.Reset();
+        j3Fake.CoverageResult = false;
+        try
+        {
+            var (token, _) = await TestHelpers.RegisterNewUserAsync(
+                _client, $"j3bad{Guid.NewGuid():N}@test.com");
+            TestHelpers.SetBearerToken(_client, token);
 
-        var request = new CreateOrderRequest(
-            [new CreateOrderItemRequest(ProductWaitePocketId, 1, null)],
-            new OrderAddressInput("70000000", "SQN", "1", null, "Asa Norte", "Brasília", "DF"),
-            null,
-            "j3",
-            "pix",
-            null,
-            null);
+            var request = new CreateOrderRequest(
+                [new CreateOrderItemRequest(ProductWaitePocketId, 1, null)],
+                new OrderAddressInput("70000000", "SQN", "1", null, "Asa Norte", "Brasília", "DF",
+                    IsResidentialAddress: true),
+                null,
+                "j3",
+                "pix",
+                null,
+                null);
 
-        var response = await TestHelpers.PostOrderAsync(_client, request);
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            var response = await TestHelpers.PostOrderAsync(_client, request);
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+        finally
+        {
+            j3Fake.Reset();
+        }
     }
 
     [Fact]

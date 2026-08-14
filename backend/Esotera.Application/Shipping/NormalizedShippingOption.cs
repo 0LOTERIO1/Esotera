@@ -21,8 +21,11 @@ public sealed class NormalizedShippingOption
     /// <summary>Preço cobrado do cliente (após frete grátis/subsídio).</summary>
     public decimal FinalPrice { get; init; }
 
-    public int EstimatedDaysMin { get; init; }
-    public int EstimatedDaysMax { get; init; }
+    /// <summary>Mínimo em dias úteis; null = prazo desconhecido (nunca usar 0 como sentinel).</summary>
+    public int? EstimatedDaysMin { get; init; }
+
+    /// <summary>Máximo em dias úteis; null = prazo desconhecido (nunca usar 0 como sentinel).</summary>
+    public int? EstimatedDaysMax { get; init; }
 
     public bool FreeShippingApplied { get; init; }
     public bool SubsidyApplied { get; init; }
@@ -32,13 +35,24 @@ public sealed class NormalizedShippingOption
 
     public DateTime QuotedAtUtc { get; init; }
 
-    public string EstimatedDaysLabel =>
-        EstimatedDaysMin == EstimatedDaysMax
-            ? EstimatedDaysMin switch
+    public string EstimatedDaysLabel
+    {
+        get
+        {
+            if (EstimatedDaysMin is null || EstimatedDaysMax is null)
+                return "Prazo a confirmar";
+
+            if (EstimatedDaysMin == EstimatedDaysMax)
             {
-                0 => "Hoje (até o fim do dia)",
-                1 => "1 dia útil",
-                _ => $"{EstimatedDaysMin} dias úteis"
+                return EstimatedDaysMin.Value switch
+                {
+                    0 => "Hoje (até o fim do dia)",
+                    1 => "1 dia útil",
+                    _ => $"{EstimatedDaysMin.Value} dias úteis"
+                };
             }
-            : $"{EstimatedDaysMin} a {EstimatedDaysMax} dias úteis";
+
+            return $"{EstimatedDaysMin.Value} a {EstimatedDaysMax.Value} dias úteis";
+        }
+    }
 }

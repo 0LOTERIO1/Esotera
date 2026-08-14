@@ -13,7 +13,7 @@ namespace Esotera.Infrastructure.Services;
 /// </summary>
 public interface ISimulatedShippingService
 {
-    (decimal Price, int EstimatedDays) Quote(
+    (decimal Price, int? EstimatedDays) Quote(
         string shippingMethodId,
         string cep,
         string state,
@@ -43,7 +43,7 @@ public sealed class SimulatedShippingService : ISimulatedShippingService, IShipp
         _clock = clock;
     }
 
-    public (decimal Price, int EstimatedDays) Quote(
+    public (decimal Price, int? EstimatedDays) Quote(
         string shippingMethodId,
         string cep,
         string state,

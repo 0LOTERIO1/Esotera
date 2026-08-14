@@ -127,6 +127,11 @@ export class MockAddressRepository implements IAddressRepository {
       city: normalized.city,
       state: normalized.state,
       isPrimary: makePrimary,
+      isResidentialAddress:
+        normalized.isResidentialAddress === true ||
+        normalized.isResidentialAddress === false
+          ? normalized.isResidentialAddress
+          : null,
     };
 
     nextList.push(created);
@@ -156,6 +161,11 @@ export class MockAddressRepository implements IAddressRepository {
             city: normalized.city,
             state: normalized.state,
             isPrimary: a.isPrimary,
+            isResidentialAddress:
+              normalized.isResidentialAddress === true ||
+              normalized.isResidentialAddress === false
+                ? normalized.isResidentialAddress
+                : a.isResidentialAddress ?? null,
           }
         : a,
     );

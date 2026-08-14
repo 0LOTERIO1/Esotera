@@ -4,10 +4,24 @@ import type { AddressInput } from "@/types";
 
 export type AddressFormErrors = Partial<
   Record<
-    "cep" | "street" | "number" | "complement" | "neighborhood" | "city" | "state",
+    | "cep"
+    | "street"
+    | "number"
+    | "complement"
+    | "neighborhood"
+    | "city"
+    | "state"
+    | "isResidentialAddress",
     string
   >
 >;
+
+/** true/false informado; null/undefined = legado sem captura. */
+export function hasResidentialAddressType(
+  address: { isResidentialAddress?: boolean | null } | null | undefined,
+): boolean {
+  return address?.isResidentialAddress === true || address?.isResidentialAddress === false;
+}
 
 /** CEP exibido na UI: 00000-000 */
 export function formatCepDisplay(cep: string): string {
@@ -48,6 +62,7 @@ export function validateAddressInput(input: {
   neighborhood: string;
   city: string;
   state: string;
+  isResidentialAddress?: boolean | null;
 }): AddressFormErrors {
   const errors: AddressFormErrors = {};
   if (!validateCep(input.cep)) {
@@ -59,6 +74,9 @@ export function validateAddressInput(input: {
   if (!input.city.trim()) errors.city = "Informe a cidade.";
   if (!validateBrazilianState(input.state)) {
     errors.state = "Selecione um estado válido (UF com 2 letras).";
+  }
+  if (input.isResidentialAddress !== true && input.isResidentialAddress !== false) {
+    errors.isResidentialAddress = "Selecione Residencial ou Comercial.";
   }
   return errors;
 }
@@ -76,5 +94,9 @@ export function normalizeAddressPayload(input: AddressInput): AddressInput {
     city: input.city.trim(),
     state: input.state.trim().toUpperCase(),
     isPrimary: Boolean(input.isPrimary),
+    isResidentialAddress:
+      input.isResidentialAddress === true || input.isResidentialAddress === false
+        ? input.isResidentialAddress
+        : null,
   };
 }

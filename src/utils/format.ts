@@ -5,6 +5,14 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
+/** Prazo em dias úteis; null/undefined = desconhecido (nunca tratar 0 como unknown). */
+export function formatEstimatedDays(days: number | null | undefined): string {
+  if (days == null) return "Prazo a confirmar";
+  if (days === 0) return "Hoje (mesmo dia)";
+  if (days === 1) return "1 dia útil";
+  return `${days} dias úteis`;
+}
+
 export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",

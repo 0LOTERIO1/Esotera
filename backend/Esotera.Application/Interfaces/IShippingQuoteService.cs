@@ -9,7 +9,7 @@ namespace Esotera.Application.Interfaces;
 /// </summary>
 public interface IShippingQuoteService
 {
-    (decimal Price, int EstimatedDays) Quote(
+    (decimal Price, int? EstimatedDays) Quote(
         string shippingMethodId,
         string cep,
         string state,

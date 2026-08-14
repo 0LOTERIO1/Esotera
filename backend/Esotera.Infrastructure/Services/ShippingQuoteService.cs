@@ -17,7 +17,7 @@ public sealed class ShippingQuoteService : IShippingQuoteService, ISimulatedShip
         _options = options;
     }
 
-    public (decimal Price, int EstimatedDays) Quote(
+    public (decimal Price, int? EstimatedDays) Quote(
         string shippingMethodId,
         string cep,
         string state,
@@ -31,6 +31,7 @@ public sealed class ShippingQuoteService : IShippingQuoteService, ISimulatedShip
             .GetAwaiter()
             .GetResult();
 
+        // Pass-through: null = prazo desconhecido (sem ?? 0 / GetValueOrDefault).
         return (option.FinalPrice, option.EstimatedDaysMax);
     }
 }

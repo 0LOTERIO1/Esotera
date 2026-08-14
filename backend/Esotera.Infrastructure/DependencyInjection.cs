@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Esotera.Infrastructure;
 
@@ -145,18 +146,95 @@ public static class DependencyInjection
                 configuration["INTEGRATIONS_ENCRYPTION_KEY"],
                 configuration["IntegrationsEncryption:KeyBase64"]);
         });
+        // J3: flat oficiais J3_* têm precedência. Section J3 / J3__* via Bind.
+        // Sem aliases J3_API_URL / J3_API_TOKEN (somente J3_GRAPHQL_URL / J3_TOKEN).
         services.Configure<J3ShippingOptions>(options =>
         {
             configuration.GetSection(J3ShippingOptions.SectionName).Bind(options);
             options.Enabled = ParseBool(configuration["J3_ENABLED"] ?? configuration["J3:Enabled"]) ?? options.Enabled;
-            options.ApiUrl = FirstNonEmpty(options.ApiUrl, configuration["J3_API_URL"], configuration["J3:ApiUrl"]);
-            options.ApiToken = FirstNonEmpty(options.ApiToken, configuration["J3_API_TOKEN"], configuration["J3:ApiToken"]);
+            options.FulfillmentEnabled =
+                ParseBool(configuration["J3_FULFILLMENT_ENABLED"] ?? configuration["J3:FulfillmentEnabled"])
+                ?? options.FulfillmentEnabled;
+            options.GraphQlUrl = FirstNonEmpty(
+                configuration["J3_GRAPHQL_URL"],
+                configuration["J3:GraphQlUrl"],
+                options.GraphQlUrl);
+            options.Token = FirstNonEmpty(
+                configuration["J3_TOKEN"],
+                configuration["J3:Token"],
+                options.Token);
+            options.CompanyGroupCode = FirstNonEmpty(
+                configuration["J3_COMPANY_GROUP_CODE"],
+                configuration["J3:CompanyGroupCode"],
+                options.CompanyGroupCode) ?? "J3";
+            options.SellerId = FirstNonEmpty(
+                configuration["J3_SELLER_ID"],
+                configuration["J3:SellerId"],
+                options.SellerId) ?? string.Empty;
+            options.SellerInformationId = FirstNonEmpty(
+                configuration["J3_SELLER_INFORMATION_ID"],
+                configuration["J3:SellerInformationId"],
+                options.SellerInformationId) ?? string.Empty;
+            options.OriginZip = FirstNonEmpty(
+                configuration["J3_ORIGIN_ZIP"],
+                configuration["J3:OriginZip"],
+                options.OriginZip);
+            options.Ecommerce = FirstNonEmpty(
+                configuration["J3_ECOMMERCE"],
+                configuration["J3:Ecommerce"],
+                options.Ecommerce) ?? "Standalone";
+            options.OrderPickupType = FirstNonEmpty(
+                configuration["J3_ORDER_PICKUP_TYPE"],
+                configuration["J3:OrderPickupType"],
+                options.OrderPickupType) ?? "Standard";
+            options.PackageIsFragile =
+                ParseBool(configuration["J3_PACKAGE_IS_FRAGILE"] ?? configuration["J3:PackageIsFragile"])
+                ?? options.PackageIsFragile;
+            options.PackageIsValuable =
+                ParseBool(configuration["J3_PACKAGE_IS_VALUABLE"] ?? configuration["J3:PackageIsValuable"])
+                ?? options.PackageIsValuable;
+            // Flat vazio não sobrescreve Bind; ausente → default 0 (inválido se Enabled).
+            if (int.TryParse(
+                    FirstNonEmpty(
+                        configuration["J3_STANDARD_PRICE_CENTS"],
+                        configuration["J3:StandardPriceCents"]),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var priceCents))
+            {
+                options.StandardPriceCents = priceCents;
+            }
+            if (int.TryParse(
+                    FirstNonEmpty(
+                        configuration["J3_TIMEOUT_SECONDS"],
+                        configuration["J3:TimeoutSeconds"]),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var j3Timeout)
+                && j3Timeout > 0)
+            {
+                options.TimeoutSeconds = Math.Clamp(j3Timeout, 3, 60);
+            }
+            if (int.TryParse(
+                    FirstNonEmpty(
+                        configuration["J3_PROCESSING_STALE_MINUTES"],
+                        configuration["J3:ProcessingStaleMinutes"]),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var staleMinutes)
+                && staleMinutes > 0)
+            {
+                options.ProcessingStaleMinutes = Math.Clamp(staleMinutes, 1, 24 * 60);
+            }
         });
         services.AddScoped<SimulatedShippingService>();
         services.AddScoped<IShippingOptionsService, ShippingOptionsService>();
         services.AddScoped<ShippingQuoteService>();
         services.AddScoped<IShippingQuoteService>(sp => sp.GetRequiredService<ShippingQuoteService>());
         services.AddScoped<ISimulatedShippingService>(sp => sp.GetRequiredService<SimulatedShippingService>());
+        services.AddScoped<IJ3FulfillmentService, J3FulfillmentService>();
+        services.AddScoped<IJ3FulfillmentProcessor, J3FulfillmentProcessor>();
+        services.AddScoped<IJ3FulfillmentAdminQueryService, J3FulfillmentAdminQueryService>();
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
@@ -174,6 +252,11 @@ public static class DependencyInjection
             services.AddSingleton<IMelhorEnvioOAuthClient>(sp => sp.GetRequiredService<FakeMelhorEnvioOAuthClient>());
             services.AddSingleton<FakeMelhorEnvioShipmentClient>();
             services.AddSingleton<IMelhorEnvioShipmentClient>(sp => sp.GetRequiredService<FakeMelhorEnvioShipmentClient>());
+            // J3: Fake em Testing — zero rede. Produção registra J3Client real abaixo.
+            services.AddSingleton<FakeJ3Client>();
+            services.AddSingleton<IJ3Client>(sp => sp.GetRequiredService<FakeJ3Client>());
+            services.AddSingleton<FakeJ3FulfillmentClient>();
+            services.AddSingleton<IJ3FulfillmentClient>(sp => sp.GetRequiredService<FakeJ3FulfillmentClient>());
         }
         else
         {
@@ -205,6 +288,36 @@ public static class DependencyInjection
             services.AddHttpClient<IMelhorEnvioShipmentClient, MelhorEnvioShipmentHttpClient>(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(15);
+            });
+        }
+
+        // J3 GraphQL real somente fora de Testing (FakeJ3Client já registrado acima em testes).
+        // Enabled=false: URL/token ausentes OK no startup; validação só ao invocar métodos (sem ValidateOnStart).
+        // BaseAddress não é fixado: cada request usa J3_GRAPHQL_URL absoluto das options.
+        if (!isTestEnvironment)
+        {
+            services.AddHttpClient<IJ3Client, J3Client>((sp, client) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;
+                var seconds = opts.TimeoutSeconds > 0
+                    ? Math.Clamp(opts.TimeoutSeconds, 3, 60)
+                    : 15;
+                client.Timeout = TimeSpan.FromSeconds(seconds);
+            });
+
+            // Mutation client: HttpClient separado (sem retry/Polly). Nenhum caller de produção neste passo.
+            // AllowAutoRedirect=false: POST não deve seguir redirect (segunda request).
+            services.AddHttpClient<IJ3FulfillmentClient, J3FulfillmentHttpClient>((sp, client) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;
+                var seconds = opts.TimeoutSeconds > 0
+                    ? Math.Clamp(opts.TimeoutSeconds, 3, 60)
+                    : 15;
+                client.Timeout = TimeSpan.FromSeconds(seconds);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false
             });
         }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAdminRepository } from "@/services/repositories";
+import { adminApi } from "@/services/api/adminApi";
 import { ApiError } from "@/services/api/apiClient";
 import type {
   AdminOrderDetail,
@@ -33,6 +34,7 @@ export default function AdminOrdersPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,6 +117,34 @@ export default function AdminOrdersPage() {
       setUpdating(false);
     }
   }
+
+  async function exportUpSeller() {
+    if (!selected) return;
+    setExporting(true);
+    try {
+      const blob = await adminApi.exportOrderUpSeller(selected.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `upseller-pedido-${selected.orderNumber}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      push("success", "Arquivo UpSeller gerado.");
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError
+          ? err.userMessage
+          : "Não foi possível exportar para o UpSeller.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const canExportUpSeller =
+    !!selected &&
+    ["payment_approved", "preparing"].includes(selected.status);
 
   return (
     <div>
@@ -370,7 +400,15 @@ export default function AdminOrdersPage() {
               </div>
             ) : null}
 
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!canExportUpSeller || exporting}
+                onClick={() => void exportUpSeller()}
+              >
+                {exporting ? "Gerando…" : "Exportar para UpSeller"}
+              </Button>
               <Button
                 type="button"
                 variant="secondary"

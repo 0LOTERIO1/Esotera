@@ -119,6 +119,7 @@ public class OrderService : IOrderService
                 var variations = ProductVariationJson.Parse(product.VariationsJson, product.Price);
                 decimal unitPrice = product.Price;
                 string? variationLabel = item.Variation;
+                string? skuSnapshot = null;
                 string? imageUrl = product.Images
                     .OrderByDescending(i => i.IsPrimary)
                     .ThenBy(i => i.SortOrder)
@@ -135,6 +136,7 @@ public class OrderService : IOrderService
 
                     unitPrice = selected.Price;
                     variationLabel = selected.Name;
+                    skuSnapshot = string.IsNullOrWhiteSpace(selected.Sku) ? null : selected.Sku.Trim();
                     if (!string.IsNullOrWhiteSpace(selected.ImageUrl))
                         imageUrl = selected.ImageUrl;
                 }
@@ -150,6 +152,7 @@ public class OrderService : IOrderService
                     UnitPrice = unitPrice,
                     Quantity = item.Quantity,
                     Variation = variationLabel,
+                    Sku = skuSnapshot,
                     ImageUrl = imageUrl,
                     LineTotal = lineTotal
                 });
@@ -565,7 +568,8 @@ public class OrderService : IOrderService
             i.Quantity,
             i.Variation,
             i.ImageUrl,
-            i.LineTotal
+            i.LineTotal,
+            i.Sku
         )).ToArray(),
         order.StatusHistory.OrderBy(h => h.CreatedAtUtc).Select(h => new OrderStatusHistoryDto(
             h.FromStatus,

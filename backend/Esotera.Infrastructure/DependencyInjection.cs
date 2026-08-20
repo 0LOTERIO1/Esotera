@@ -227,6 +227,43 @@ public static class DependencyInjection
                 options.ProcessingStaleMinutes = Math.Clamp(staleMinutes, 1, 24 * 60);
             }
         });
+
+        services.Configure<UpSellerOptions>(options =>
+        {
+            configuration.GetSection(UpSellerOptions.SectionName).Bind(options);
+            options.StoreName = FirstNonEmpty(
+                configuration["UPSELLER_STORE_NAME"],
+                configuration["UpSeller:StoreName"],
+                options.StoreName) ?? "Loja Padrão";
+            options.WarehouseName = FirstNonEmpty(
+                configuration["UPSELLER_WAREHOUSE_NAME"],
+                configuration["UpSeller:WarehouseName"],
+                options.WarehouseName) ?? "My Warehouse";
+            options.ShippingCostMethod = FirstNonEmpty(
+                configuration["UPSELLER_SHIPPING_COST_METHOD"],
+                configuration["UpSeller:ShippingCostMethod"],
+                options.ShippingCostMethod) ?? "2";
+            options.InvoiceRequired = FirstNonEmpty(
+                configuration["UPSELLER_INVOICE_REQUIRED"],
+                configuration["UpSeller:InvoiceRequired"],
+                options.InvoiceRequired) ?? "Não";
+            options.DefaultPaymentMethod = FirstNonEmpty(
+                configuration["UPSELLER_DEFAULT_PAYMENT_METHOD"],
+                configuration["UpSeller:DefaultPaymentMethod"],
+                options.DefaultPaymentMethod) ?? "Dinheiro";
+            if (int.TryParse(
+                    FirstNonEmpty(
+                        configuration["UPSELLER_PACKAGE_QUANTITY"],
+                        configuration["UpSeller:PackageQuantity"]),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var pkgQty)
+                && pkgQty > 0)
+            {
+                options.PackageQuantity = Math.Clamp(pkgQty, 1, 99);
+            }
+        });
+
         services.AddScoped<SimulatedShippingService>();
         services.AddScoped<IShippingOptionsService, ShippingOptionsService>();
         services.AddScoped<ShippingQuoteService>();
@@ -329,6 +366,7 @@ public static class DependencyInjection
         services.AddScoped<IStoreSettingsService, StoreSettingsService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IAdminQueryService, AdminQueryService>();
+        services.AddScoped<IUpSellerOrderExportService, UpSellerOrderExportService>();
         services.AddScoped<INewsletterService, NewsletterService>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<DevSeed>();

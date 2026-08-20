@@ -45,6 +45,9 @@ backend/.env.*
 *.tsbuildinfo
 next-env.d.ts
 
+# Local diagnostics / E2E artifacts (never commit)
+/artifacts/
+
 # Backend .NET
 backend/storage/**
 !backend/storage/products/.gitkeep
@@ -55,3 +58,4 @@ backend/storage/**
 *.suo
 *.userosscache
 *.sln.docstates
+*.pfx

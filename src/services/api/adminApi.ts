@@ -89,6 +89,64 @@ export const adminApi = {
     return detail;
   },
 
+  async exportOrderUpSeller(id: string): Promise<Blob> {
+    const base =
+      process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+      "http://localhost:5080";
+    const { sessionService } = await import("./sessionService");
+    const { ApiError } = await import("./apiClient");
+    const token = sessionService.getToken();
+    if (!token) {
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "É necessário estar autenticado na API para esta ação.",
+      );
+    }
+    const res = await fetch(`${base}/api/admin/orders/${id}/upseller-export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) {
+      sessionService.notifyUnauthorized();
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "Sessão expirada. Faça login novamente.",
+      );
+    }
+    if (res.status === 403) {
+      throw new ApiError(
+        403,
+        "Proibido",
+        "Você não tem permissão para esta ação.",
+      );
+    }
+    if (!res.ok) {
+      let detail: string | undefined;
+      try {
+        const payload = (await res.json()) as {
+          detail?: string;
+          errors?: Record<string, string[]>;
+          title?: string;
+        };
+        detail =
+          Object.values(payload.errors ?? {})
+            .flat()
+            .find(Boolean) ||
+          payload.detail ||
+          payload.title;
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(
+        res.status,
+        "Falha ao exportar",
+        detail || "Não foi possível gerar o arquivo UpSeller.",
+      );
+    }
+    return res.blob();
+  },
+
   async listCustomers(): Promise<AdminCustomer[]> {
     const data = await apiClient.get<Parameters<typeof mapAdminCustomer>[0][]>(
       "/api/admin/customers",

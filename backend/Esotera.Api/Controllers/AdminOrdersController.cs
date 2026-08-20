@@ -15,17 +15,20 @@ public class AdminOrdersController : ControllerBase
 {
     private readonly IAdminQueryService _adminQueries;
     private readonly IOrderService _orderService;
+    private readonly IUpSellerOrderExportService _upSellerExport;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
     public AdminOrdersController(
         IAdminQueryService adminQueries,
         IOrderService orderService,
+        IUpSellerOrderExportService upSellerExport,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
         _adminQueries = adminQueries;
         _orderService = orderService;
+        _upSellerExport = upSellerExport;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -46,6 +49,16 @@ public class AdminOrdersController : ControllerBase
             return NotFound();
 
         return Ok(order);
+    }
+
+    /// <summary>Download .xlsx no layout oficial UpSeller (aba order_). Sem HTTP externo.</summary>
+    [HttpGet("{id:guid}/upseller-export")]
+    public async Task<IActionResult> ExportUpSeller(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var file = await _upSellerExport.ExportOrderAsync(id, cancellationToken);
+        return File(file.Content, file.ContentType, file.FileName);
     }
 
     [HttpPatch("{id:guid}/status")]

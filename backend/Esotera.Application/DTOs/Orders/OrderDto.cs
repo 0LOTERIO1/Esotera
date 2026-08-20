@@ -68,7 +68,8 @@ public record OrderItemDto(
     int Quantity,
     string? Variation,
     string? ImageUrl,
-    decimal LineTotal
+    decimal LineTotal,
+    string? Sku = null
 );
 
 public record OrderStatusHistoryDto(

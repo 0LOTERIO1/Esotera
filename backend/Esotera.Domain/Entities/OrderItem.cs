@@ -9,6 +9,8 @@ public class OrderItem
     public decimal UnitPrice { get; set; }
     public int Quantity { get; set; }
     public string? Variation { get; set; }
+    /// <summary>SKU congelado na criação (variação/produto). Não reconstruir no export UpSeller.</summary>
+    public string? Sku { get; set; }
     public string? ImageUrl { get; set; }
     public decimal LineTotal { get; set; }
 

@@ -18,6 +18,7 @@ public class OrderItemConfiguration : IEntityTypeConfiguration<OrderItem>
         builder.Property(x => x.LineTotal).HasPrecision(18, 2);
 
         builder.Property(x => x.Variation).HasMaxLength(100);
+        builder.Property(x => x.Sku).HasMaxLength(64);
         builder.Property(x => x.ImageUrl).HasMaxLength(500);
     }
 }

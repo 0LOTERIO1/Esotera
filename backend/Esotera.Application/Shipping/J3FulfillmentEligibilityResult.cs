@@ -10,8 +10,8 @@ public sealed class J3FulfillmentEligibilityResult
     public required string Message { get; init; }
 
     /// <summary>
-    /// Recorte fiscal para J3-2 (ChNFe/Number/Series). Nunca inclui XML/cipher.
-    /// Presente quando há FiscalInvoice associada, mesmo se não elegível.
+    /// Recorte fiscal para gate + payload createTmsOrders (ChNFe/Number/Series).
+    /// Nunca inclui XML/cipher. Presente quando há FiscalInvoice associada, mesmo se não elegível.
     /// </summary>
     public J3FiscalEligibilitySnapshot? Fiscal { get; init; }
 

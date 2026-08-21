@@ -18,14 +18,18 @@ public sealed class FakeJ3FulfillmentClient : IJ3FulfillmentClient
 
     public Guid? LastOrderId { get; private set; }
 
+    public J3FiscalEligibilitySnapshot? LastFiscal { get; private set; }
+
     public Task<J3CreateOrderAttemptResult> CreateOrderAsync(
         Order order,
         StoreSettings settings,
+        J3FiscalEligibilitySnapshot? fiscal,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _createCallCount);
         LastOrderId = order.Id;
+        LastFiscal = fiscal;
         return Task.FromResult(NextResult);
     }
 
@@ -33,6 +37,7 @@ public sealed class FakeJ3FulfillmentClient : IJ3FulfillmentClient
     {
         _createCallCount = 0;
         LastOrderId = null;
+        LastFiscal = null;
         NextResult = J3CreateOrderAttemptResult.Success("j3-order-fake", "CODE-FAKE", "TRK-FAKE", "dp-fake");
     }
 }

@@ -10,9 +10,10 @@ public sealed class J3CreateTmsOrderCommand
 }
 
 /// <summary>
-/// CreateTmsOrderInput alinhado ao Pedido Avulso Standalone do portal:
-/// sellerId, orderPickupType, quantity, sellerInformationId, totalPackageValueInCents, deliveryPoint.
-/// Nulos omitidos (WhenWritingNull): nf/danfe/ecommerce/packages/nro/tracking/shipment/etc.
+/// CreateTmsOrderInput alinhado ao schema J3 (introspecção):
+/// sellerId, orderPickupType, quantity, sellerInformationId, totalPackageValueInCents, deliveryPoint,
+/// e opcionais fiscais nf / nfKey / nfSeries (metadata FiscalInvoice — sem XML/danfe).
+/// Nulos omitidos (WhenWritingNull): danfe/ecommerce/packages/nro/tracking/shipment/etc.
 /// </summary>
 public sealed class J3CreateTmsOrderInputDto
 {
@@ -22,6 +23,15 @@ public sealed class J3CreateTmsOrderInputDto
     public required int Quantity { get; init; }
     public required int TotalPackageValueInCents { get; init; }
     public required J3DeliveryPointInputDto DeliveryPoint { get; init; }
+
+    /// <summary>Número da NF-e (<see cref="Domain.Entities.FiscalInvoice.Number"/>). Schema: String opcional.</summary>
+    public string? Nf { get; init; }
+
+    /// <summary>ChNFe 44 dígitos. Schema: nfKey String opcional.</summary>
+    public string? NfKey { get; init; }
+
+    /// <summary>Série da NF-e. Schema: nfSeries String opcional.</summary>
+    public string? NfSeries { get; init; }
 }
 
 /// <summary>

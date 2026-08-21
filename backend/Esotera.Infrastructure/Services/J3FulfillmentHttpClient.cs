@@ -9,6 +9,7 @@ using Esotera.Application.Interfaces;
 using Esotera.Application.Options;
 using Esotera.Application.Shipping;
 using Esotera.Domain.Entities;
+using Esotera.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -59,6 +60,7 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
     public async Task<J3CreateOrderAttemptResult> CreateOrderAsync(
         Order order,
         StoreSettings settings,
+        J3FiscalEligibilitySnapshot? fiscal,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(order);
@@ -76,7 +78,37 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
         if (!_options.HasValidGraphQlUrl || string.IsNullOrWhiteSpace(_options.Token))
             return LocalFailure(order.Id, J3FulfillmentErrorCodes.Configuration);
 
-        var built = J3CreateTmsOrderMapper.TryBuild(order, settings, _options);
+        // Fail-closed: sem NF-e authorized + ChNFe válida → zero HTTP.
+        if (fiscal is null)
+        {
+            return LocalFailure(
+                order.Id,
+                J3FulfillmentEligibility.ToErrorCode(J3FulfillmentEligibilityCodes.MissingFiscalInvoice));
+        }
+
+        if (!string.Equals(fiscal.Status, FiscalInvoiceStatus.Authorized, StringComparison.Ordinal))
+        {
+            return LocalFailure(
+                order.Id,
+                J3FulfillmentEligibility.ToErrorCode(J3FulfillmentEligibilityCodes.FiscalInvoiceNotAuthorized));
+        }
+
+        var chNFe = fiscal.ChNFe?.Trim();
+        if (string.IsNullOrEmpty(chNFe))
+        {
+            return LocalFailure(
+                order.Id,
+                J3FulfillmentEligibility.ToErrorCode(J3FulfillmentEligibilityCodes.MissingNfeKey));
+        }
+
+        if (!J3FulfillmentEligibility.IsValidChNFe(chNFe))
+        {
+            return LocalFailure(
+                order.Id,
+                J3FulfillmentEligibility.ToErrorCode(J3FulfillmentEligibilityCodes.InvalidNfeKey));
+        }
+
+        var built = J3CreateTmsOrderMapper.TryBuild(order, settings, _options, fiscal);
         if (!built.IsValid || built.Command is null)
             return LocalFailure(order.Id, built.ErrorCode ?? J3FulfillmentErrorCodes.Configuration);
 

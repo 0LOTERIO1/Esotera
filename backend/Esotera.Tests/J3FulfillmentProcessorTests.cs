@@ -74,6 +74,23 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
     }
 
     [Fact]
+    public async Task Pending_PassesFiscalSnapshotToClient_WithoutXmlCipher()
+    {
+        var fake = ResetFake();
+        var fid = await SeedPendingAsync();
+        await ProcessAsync(fid);
+
+        fake.CreateCallCount.Should().Be(1);
+        fake.LastFiscal.Should().NotBeNull();
+        fake.LastFiscal!.Status.Should().Be(FiscalInvoiceStatus.Authorized);
+        fake.LastFiscal.Number.Should().Be("2");
+        fake.LastFiscal.Series.Should().Be("9");
+        fake.LastFiscal.ChNFe.Should().NotBeNullOrWhiteSpace();
+        fake.LastFiscal.ChNFe!.Length.Should().Be(44);
+        typeof(J3FiscalEligibilitySnapshot).GetProperty("XmlCipher").Should().BeNull();
+    }
+
+    [Fact]
     public async Task Concurrent_OnlyOneClientCall()
     {
         var fake = ResetFake();

@@ -145,7 +145,9 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
             .FirstOrDefaultAsync(cancellationToken)
             ?? StoreSettingsService.CreateDefault();
 
-        var built = J3CreateTmsOrderMapper.TryBuild(order!, settings, _j3);
+        // Mesmo snapshot fiscal da revalidação pós-claim (sem XmlCipher).
+        var fiscalForPayload = postClaim.Fiscal;
+        var built = J3CreateTmsOrderMapper.TryBuild(order!, settings, _j3, fiscalForPayload);
         if (!built.IsValid)
         {
             await MarkRetryableFailureAsync(
@@ -155,7 +157,11 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
             return;
         }
 
-        var attempt = await _client.CreateOrderAsync(order!, settings, cancellationToken);
+        var attempt = await _client.CreateOrderAsync(
+            order!,
+            settings,
+            fiscalForPayload,
+            cancellationToken);
         switch (attempt.Outcome)
         {
             case J3CreateOrderOutcome.Success:

@@ -2,10 +2,12 @@ using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using Esotera.Application.DTOs.J3;
 using Esotera.Application.Interfaces;
 using Esotera.Application.Options;
 using Esotera.Application.Shipping;
 using Esotera.Domain.Entities;
+using Esotera.Domain.Enums;
 using Esotera.Infrastructure.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -78,7 +80,7 @@ public class J3CreateTmsOrderClientTests
             return SuccessJson();
         }, opts => opts.FulfillmentEnabled = false);
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.FulfillmentDisabled);
         calls.Should().Be(0);
@@ -94,7 +96,7 @@ public class J3CreateTmsOrderClientTests
             return SuccessJson();
         }, opts => opts.Enabled = false);
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.Success);
         calls.Should().Be(1);
     }
@@ -109,7 +111,7 @@ public class J3CreateTmsOrderClientTests
             return SuccessJson();
         }, opts => opts.SellerId = "  ");
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.MissingSellerId);
         calls.Should().Be(0);
@@ -125,7 +127,7 @@ public class J3CreateTmsOrderClientTests
             return SuccessJson();
         }, opts => opts.SellerInformationId = "");
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.MissingSellerInformationId);
         calls.Should().Be(0);
@@ -141,7 +143,7 @@ public class J3CreateTmsOrderClientTests
             return SuccessJson();
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(residential: null), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(residential: null), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.ResidentialRequired);
         calls.Should().Be(0);
@@ -159,9 +161,76 @@ public class J3CreateTmsOrderClientTests
 
         var order = ValidOrder();
         order.ShipCep = "123";
-        var result = await client.CreateOrderAsync(order, ValidSettings());
+        var result = await client.CreateOrderAsync(order, ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.InvalidCep);
+        calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FiscalNull_ZeroHttp_LocalFailure()
+    {
+        var calls = 0;
+        var client = CreateClient(_ =>
+        {
+            calls++;
+            return SuccessJson();
+        });
+
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), fiscal: null);
+        result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
+        result.ErrorCode.Should().Be("MISSING_FISCAL_INVOICE");
+        calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FiscalNotAuthorized_ZeroHttp_LocalFailure()
+    {
+        var calls = 0;
+        var client = CreateClient(_ =>
+        {
+            calls++;
+            return SuccessJson();
+        });
+
+        var fiscal = ValidFiscal() with { Status = FiscalInvoiceStatus.Unknown };
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), fiscal);
+        result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
+        result.ErrorCode.Should().Be("FISCAL_NOT_AUTHORIZED");
+        calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FiscalInvalidChNFe_ZeroHttp_LocalFailure()
+    {
+        var calls = 0;
+        var client = CreateClient(_ =>
+        {
+            calls++;
+            return SuccessJson();
+        });
+
+        var fiscal = ValidFiscal() with { ChNFe = "123" };
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), fiscal);
+        result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
+        result.ErrorCode.Should().Be("INVALID_NFE_KEY");
+        calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FiscalMissingChNFe_ZeroHttp_LocalFailure()
+    {
+        var calls = 0;
+        var client = CreateClient(_ =>
+        {
+            calls++;
+            return SuccessJson();
+        });
+
+        var fiscal = ValidFiscal() with { ChNFe = null };
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), fiscal);
+        result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
+        result.ErrorCode.Should().Be("MISSING_NFE_KEY");
         calls.Should().Be(0);
     }
 
@@ -178,7 +247,7 @@ public class J3CreateTmsOrderClientTests
         var order = ValidOrder();
         order.ShipCep = "03065000";
         order.ShipNeighborhood = "Belenzinho";
-        await client.CreateOrderAsync(order, ValidSettings());
+        await client.CreateOrderAsync(order, ValidSettings(), ValidFiscal());
 
         using var doc = JsonDocument.Parse(body!);
         doc.RootElement.GetProperty("operationName").GetString().Should().Be("CreateJ3TmsOrders");
@@ -205,6 +274,10 @@ public class J3CreateTmsOrderClientTests
         input.GetProperty("totalPackageValueInCents").GetInt32().Should().Be(9000);
         input.TryGetProperty("ecommerce", out _).Should().BeFalse();
         input.TryGetProperty("packages", out _).Should().BeFalse();
+        input.GetProperty("nf").GetString().Should().Be("2");
+        input.GetProperty("nfKey").GetString().Should().Be(new string('9', 44));
+        input.GetProperty("nfSeries").GetString().Should().Be("9");
+        input.TryGetProperty("danfe", out _).Should().BeFalse();
 
         var dp = input.GetProperty("deliveryPoint");
         dp.GetProperty("addressDistric").GetString().Should().Be("Belenzinho");
@@ -225,7 +298,7 @@ public class J3CreateTmsOrderClientTests
             return SuccessJson();
         });
 
-        await client.CreateOrderAsync(ValidOrder(residential: false), ValidSettings());
+        await client.CreateOrderAsync(ValidOrder(residential: false), ValidSettings(), ValidFiscal());
 
         using var doc = JsonDocument.Parse(body!);
         doc.RootElement.GetProperty("variables").GetProperty("inputs")[0]
@@ -234,7 +307,42 @@ public class J3CreateTmsOrderClientTests
     }
 
     [Fact]
-    public async Task Payload_DoesNotInventNfDanfeTrackingNroShipment()
+    public async Task Payload_WithAuthorizedFiscal_IncludesNfNfKeyNfSeries_OmitsDanfe()
+    {
+        var chNFe = new string('8', 44);
+
+        string? body = null;
+        var client = CreateClient(req =>
+        {
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return SuccessJson();
+        });
+
+        var fiscal = new J3FiscalEligibilitySnapshot
+        {
+            Status = FiscalInvoiceStatus.Authorized,
+            ChNFe = $"  {chNFe}  ",
+            Number = "2",
+            Series = "9",
+            AuthorizedAtUtc = DateTime.UtcNow
+        };
+
+        await client.CreateOrderAsync(ValidOrder(), ValidSettings(), fiscal);
+
+        using var doc = JsonDocument.Parse(body!);
+        var input = doc.RootElement.GetProperty("variables").GetProperty("inputs")[0];
+        input.GetProperty("nf").GetString().Should().Be("2");
+        input.GetProperty("nfKey").GetString().Should().Be(chNFe);
+        input.GetProperty("nfKey").GetString()!.Length.Should().Be(44);
+        input.GetProperty("nfSeries").GetString().Should().Be("9");
+        input.TryGetProperty("danfe", out _).Should().BeFalse();
+        input.TryGetProperty("packages", out _).Should().BeFalse();
+        input.TryGetProperty("ecommerce", out _).Should().BeFalse();
+        body.Should().NotContain("XmlCipher");
+    }
+
+    [Fact]
+    public async Task Payload_PhoneOptional_OmittedWhenEmpty()
     {
         string? body = null;
         var client = CreateClient(req =>
@@ -243,18 +351,30 @@ public class J3CreateTmsOrderClientTests
             return SuccessJson();
         });
 
-        await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var order = ValidOrder();
+        order.CustomerPhone = "  ";
+        await client.CreateOrderAsync(order, ValidSettings(), ValidFiscal());
 
         using var doc = JsonDocument.Parse(body!);
-        var input = doc.RootElement.GetProperty("variables").GetProperty("inputs")[0];
-        foreach (var forbidden in new[]
-                 {
-                     "nf", "nfKey", "nfSeries", "danfe", "shipment", "shippingIntegrationId",
-                     "trackingNumber", "nro", "isTurboOrder", "ecommerce", "packages"
-                 })
-        {
-            input.TryGetProperty(forbidden, out _).Should().BeFalse($"não enviar {forbidden}");
-        }
+        var dp = doc.RootElement.GetProperty("variables").GetProperty("inputs")[0]
+            .GetProperty("deliveryPoint");
+        dp.TryGetProperty("contactPhoneNumber", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Mapper_WithFiscal_MapsNfFields_WithoutDanfeProperty()
+    {
+        var built = J3CreateTmsOrderMapper.TryBuild(
+            ValidOrder(),
+            ValidSettings(),
+            EnabledOptions(),
+            ValidFiscal());
+
+        built.IsValid.Should().BeTrue();
+        built.Command!.Input.Nf.Should().Be("2");
+        built.Command.Input.NfKey.Should().Be(new string('9', 44));
+        built.Command.Input.NfSeries.Should().Be("9");
+        typeof(J3CreateTmsOrderInputDto).GetProperty("Danfe").Should().BeNull();
     }
 
     [Fact]
@@ -271,7 +391,7 @@ public class J3CreateTmsOrderClientTests
         order.Subtotal = 100m;
         order.Discount = 10m;
         order.ShippingPrice = 50m;
-        await client.CreateOrderAsync(order, ValidSettings());
+        await client.CreateOrderAsync(order, ValidSettings(), ValidFiscal());
 
         using var doc = JsonDocument.Parse(body!);
         var input = doc.RootElement.GetProperty("variables").GetProperty("inputs")[0];
@@ -291,7 +411,7 @@ public class J3CreateTmsOrderClientTests
 
         var order = ValidOrder();
         order.ShipCep = "03065-000";
-        await client.CreateOrderAsync(order, ValidSettings());
+        await client.CreateOrderAsync(order, ValidSettings(), ValidFiscal());
 
         using var doc = JsonDocument.Parse(body!);
         doc.RootElement.GetProperty("variables").GetProperty("inputs")[0]
@@ -303,7 +423,7 @@ public class J3CreateTmsOrderClientTests
     public async Task SuccessTrue_WithOrderId_IsSuccess()
     {
         var client = CreateClient(_ => SuccessJson("j3-order-1"));
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.Success);
         result.OrderId.Should().Be("j3-order-1");
         result.ErrorCode.Should().BeNull();
@@ -313,7 +433,7 @@ public class J3CreateTmsOrderClientTests
     public async Task SuccessTrue_EmptyOrderId_IsUnknownOutcome()
     {
         var client = CreateClient(_ => SuccessJson(orderId: ""));
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.SuccessWithoutOrderId);
     }
@@ -329,7 +449,7 @@ public class J3CreateTmsOrderClientTests
                 """{"data":{"createTmsOrders":[{"success":false,"message":"rejected","orderId":null,"index":0}]}}""");
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.SuccessFalse);
         calls.Should().Be(1);
@@ -339,7 +459,7 @@ public class J3CreateTmsOrderClientTests
     public async Task EmptyResultArray_IsUnknownOutcome()
     {
         var client = CreateClient(_ => OkJson("""{"data":{"createTmsOrders":[]}}"""));
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.UnexpectedResultCount);
     }
@@ -349,7 +469,7 @@ public class J3CreateTmsOrderClientTests
     {
         var client = CreateClient(_ => OkJson(
             """{"data":{"createTmsOrders":[{"success":true,"orderId":"a","index":0},{"success":true,"orderId":"b","index":1}]}}"""));
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.UnexpectedResultCount);
     }
@@ -359,7 +479,7 @@ public class J3CreateTmsOrderClientTests
     {
         var client = CreateClient(_ => OkJson(
             """{"data":{"createTmsOrders":[{"success":true,"orderId":"j3-order-1","index":1}]}}"""));
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.UnexpectedIndex);
     }
@@ -374,7 +494,7 @@ public class J3CreateTmsOrderClientTests
             throw new TaskCanceledException("simulated timeout after send");
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.TimeoutUnknown);
         calls.Should().Be(1);
@@ -393,7 +513,7 @@ public class J3CreateTmsOrderClientTests
             };
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.Http500);
         calls.Should().Be(1);
@@ -407,7 +527,7 @@ public class J3CreateTmsOrderClientTests
             Content = new StringContent("""{"data":{"createTmsOrders":[{"success":tru""", Encoding.UTF8, "application/json")
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.JsonInvalid);
     }
@@ -416,7 +536,7 @@ public class J3CreateTmsOrderClientTests
     public async Task AmbiguousGraphqlError_IsUnknownOutcome()
     {
         var client = CreateClient(_ => OkJson("""{"errors":[{"message":"internal"}]}"""));
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.GraphqlAmbiguous);
     }
@@ -431,7 +551,7 @@ public class J3CreateTmsOrderClientTests
             return OkJson("""{"errors":[{"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}""");
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.GraphqlValidation);
         calls.Should().Be(1);
@@ -453,7 +573,7 @@ public class J3CreateTmsOrderClientTests
             };
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
         result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.GraphqlValidation);
         calls.Should().Be(1);
@@ -472,7 +592,7 @@ public class J3CreateTmsOrderClientTests
             };
         });
 
-        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings());
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
         result.Outcome.Should().Be(J3CreateOrderOutcome.UnknownOutcome);
         calls.Should().Be(1);
     }
@@ -491,6 +611,15 @@ public class J3CreateTmsOrderClientTests
         var builtFalse = J3CreateTmsOrderMapper.TryBuild(ValidOrder(residential: false), ValidSettings(), opts);
         builtFalse.Command!.Input.DeliveryPoint.IsResidentialAddress.Should().BeFalse();
     }
+
+    private static J3FiscalEligibilitySnapshot ValidFiscal() => new()
+    {
+        Status = FiscalInvoiceStatus.Authorized,
+        ChNFe = new string('9', 44),
+        Number = "2",
+        Series = "9",
+        AuthorizedAtUtc = DateTime.UtcNow
+    };
 
     private static J3FulfillmentHttpClient CreateClient(
         Func<HttpRequestMessage, HttpResponseMessage> responder,

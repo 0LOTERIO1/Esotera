@@ -13,11 +13,13 @@ public interface IJ3FulfillmentClient
     /// <summary>
     /// Prepara e envia <c>createTmsOrders</c> (array de exatamente 1 input) no máximo uma vez.
     /// Exige <c>J3_FULFILLMENT_ENABLED</c> (não exige <c>J3_ENABLED</c> — pedidos já pagos).
+    /// <paramref name="fiscal"/> obrigatório no boundary de envio: authorized + ChNFe válida (sem XmlCipher).
     /// Caso contrário não envia HTTP.
     /// Não gera etiqueta. Sem retry automático.
     /// </summary>
     Task<J3CreateOrderAttemptResult> CreateOrderAsync(
         Order order,
         StoreSettings settings,
+        J3FiscalEligibilitySnapshot? fiscal,
         CancellationToken cancellationToken = default);
 }

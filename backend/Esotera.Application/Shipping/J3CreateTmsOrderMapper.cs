@@ -6,16 +6,17 @@ using Esotera.Domain.Entities;
 namespace Esotera.Application.Shipping;
 
 /// <summary>
-/// Mapper puro Order + options → CreateTmsOrderInput (Pedido Avulso).
-/// Sem HTTP. Sem Address atual. Sem nf/danfe/ecommerce/packages/nro/tracking/shipment.
-/// StoreSettings permanece na assinatura (compat CreateOrderAsync) mas não entra no payload Avulso.
+/// Mapper puro Order + options (+ snapshot fiscal) → CreateTmsOrderInput (Pedido Avulso).
+/// Sem HTTP. Sem XmlCipher/decriptação. Sem danfe/ecommerce/packages/nro/tracking/shipment.
+/// StoreSettings permanece na assinatura (compat) mas não entra no payload Avulso.
 /// </summary>
 public static class J3CreateTmsOrderMapper
 {
     public static J3CreateTmsOrderBuildResult TryBuild(
         Order order,
         StoreSettings settings,
-        J3ShippingOptions options)
+        J3ShippingOptions options,
+        J3FiscalEligibilitySnapshot? fiscal = null)
     {
         ArgumentNullException.ThrowIfNull(order);
         ArgumentNullException.ThrowIfNull(settings);
@@ -54,6 +55,22 @@ public static class J3CreateTmsOrderMapper
         var phone = string.IsNullOrWhiteSpace(order.CustomerPhone) ? null : order.CustomerPhone.Trim();
         var complement = string.IsNullOrWhiteSpace(order.ShipComplement) ? null : order.ShipComplement.Trim();
 
+        string? nf = null;
+        string? nfKey = null;
+        string? nfSeries = null;
+        if (fiscal is not null)
+        {
+            var ch = fiscal.ChNFe?.Trim();
+            if (!string.IsNullOrEmpty(ch) && J3FulfillmentEligibility.IsValidChNFe(ch))
+                nfKey = ch;
+
+            if (!string.IsNullOrWhiteSpace(fiscal.Number))
+                nf = fiscal.Number.Trim();
+
+            if (!string.IsNullOrWhiteSpace(fiscal.Series))
+                nfSeries = fiscal.Series.Trim();
+        }
+
         var input = new J3CreateTmsOrderInputDto
         {
             SellerId = sellerId,
@@ -73,7 +90,10 @@ public static class J3CreateTmsOrderMapper
                 ContactName = order.CustomerName.Trim(),
                 ContactPhoneNumber = phone,
                 IsResidentialAddress = order.ShippingIsResidentialAddress.Value
-            }
+            },
+            Nf = nf,
+            NfKey = nfKey,
+            NfSeries = nfSeries
         };
 
         return J3CreateTmsOrderBuildResult.Ok(new J3CreateTmsOrderCommand

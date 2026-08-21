@@ -375,6 +375,11 @@ function J3FulfillmentDetail({ detail }: { detail: J3FulfillmentAdminDetail }) {
           value={detail.completedAtUtc ? formatDate(detail.completedAtUtc) : "—"}
         />
         <Row
+          label="CanSendToJ3"
+          value={detail.canSendToJ3 ? "sim" : "não"}
+        />
+        <Row label="EligibilityReason" value={detail.eligibilityReason || "—"} />
+        <Row
           label="CanRetrySafely"
           value={detail.canRetrySafely ? "sim" : "não"}
         />

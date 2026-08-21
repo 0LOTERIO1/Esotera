@@ -27,7 +27,7 @@ public sealed record J3FulfillmentAdminListItemDto(
     bool NeedsManualReview,
     bool IsPossiblyStuck);
 
-/// <summary>Detalhe admin diagnóstico. Sem endereço, telefone, e-mail, token ou raw error.</summary>
+/// <summary>Detalhe admin diagnóstico. Sem endereço, telefone, e-mail, token, ChNFe completa ou raw error.</summary>
 public sealed record J3FulfillmentAdminDetailDto(
     Guid Id,
     Guid OrderId,
@@ -48,4 +48,6 @@ public sealed record J3FulfillmentAdminDetailDto(
     DateTime? CompletedAtUtc,
     bool CanRetrySafely,
     bool NeedsManualReview,
-    bool IsPossiblyStuck);
+    bool IsPossiblyStuck,
+    bool CanSendToJ3,
+    string EligibilityReason);

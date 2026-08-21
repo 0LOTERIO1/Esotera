@@ -103,6 +103,7 @@ public class J3FulfillmentE2ETests
             "e2e-oid", "e2e-code", "e2e-trk", "e2e-dp");
 
         var orderId = await CreateAndPayJ3OrderAsync();
+        await SeedAuthorizedFiscalAsync(orderId);
         var pending = await AdminGetByOrderAsync(orderId);
         pending!.Status.Should().Be(J3FulfillmentStatus.Pending);
         pending.AttemptCount.Should().Be(0);
@@ -131,6 +132,7 @@ public class J3FulfillmentE2ETests
         fake.Mut.NextResult = J3CreateOrderAttemptResult.Unknown(J3FulfillmentErrorCodes.TimeoutUnknown);
 
         var orderId = await CreateAndPayJ3OrderAsync();
+        await SeedAuthorizedFiscalAsync(orderId);
         var pending = await AdminGetByOrderAsync(orderId);
         await ProcessAsync(pending!.Id);
 
@@ -151,10 +153,11 @@ public class J3FulfillmentE2ETests
     }
 
     [Fact]
-    public async Task PaidJ3_ResidentialNull_Retryable_ZeroClient_AdminCanRetrySafely()
+    public async Task PaidJ3_ResidentialNull_SkippedBeforeClaim_ZeroClient_StaysPending()
     {
         var fake = ResetFakes();
         var orderId = await CreateAndPayJ3OrderAsync();
+        await SeedAuthorizedFiscalAsync(orderId);
         var pending = await AdminGetByOrderAsync(orderId);
 
         using (var scope = _factory.Services.CreateScope())
@@ -169,11 +172,11 @@ public class J3FulfillmentE2ETests
 
         fake.Mut.CreateCallCount.Should().Be(0);
         var admin = await AdminGetByOrderAsync(orderId);
-        admin!.Status.Should().Be(J3FulfillmentStatus.RetryableFailure);
-        admin.AttemptCount.Should().Be(1);
-        admin.CanRetrySafely.Should().BeTrue();
-        admin.NeedsManualReview.Should().BeFalse();
-        admin.IsPossiblyStuck.Should().BeFalse();
+        admin!.Status.Should().Be(J3FulfillmentStatus.Pending);
+        admin.AttemptCount.Should().Be(0);
+        admin.CanRetrySafely.Should().BeFalse();
+        admin.CanSendToJ3.Should().BeFalse();
+        admin.EligibilityReason.Should().Be(J3FulfillmentEligibilityCodes.MissingResidentialFlag);
     }
 
     [Fact]
@@ -316,6 +319,34 @@ public class J3FulfillmentE2ETests
         return order.Id;
     }
 
+    private async Task SeedAuthorizedFiscalAsync(Guid orderId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
+        var hex = Guid.NewGuid().ToString("N");
+        Span<char> digits = stackalloc char[44];
+        "35260820".AsSpan().CopyTo(digits);
+        for (var i = 8; i < 44; i++)
+            digits[i] = (char)('0' + (hex[(i - 8) % hex.Length] % 10));
+        var now = DateTime.UtcNow;
+        db.FiscalInvoices.Add(new FiscalInvoice
+        {
+            Id = Guid.NewGuid(),
+            OrderId = orderId,
+            Status = FiscalInvoiceStatus.Authorized,
+            ChNFe = new string(digits),
+            Number = "2",
+            Series = "9",
+            AuthorizedAtUtc = now,
+            XmlCipher = "test-cipher",
+            XmlSha256 = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")[..32],
+            Source = FiscalInvoiceSource.ManualUpload,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        });
+        await db.SaveChangesAsync();
+    }
+
     private async Task ApproveViaWebhookAsync(Guid orderId, string customerToken)
     {
         await TestHelpers.ForceOrderTotalAsync(_factory.Services, orderId, 50.00m);
@@ -418,16 +449,18 @@ public class J3FulfillmentE2ETests
         {
             var fulfillment = new J3FulfillmentService(
                 db, _j3Options, NullLogger<J3FulfillmentService>.Instance);
+            var eligibility = new J3FulfillmentEligibilityService(db, _j3Options);
             return new J3FulfillmentProcessor(
                 db,
                 fulfillment,
                 Fake,
+                eligibility,
                 _j3Options,
                 NullLogger<J3FulfillmentProcessor>.Instance);
         }
 
         public J3FulfillmentAdminQueryService CreateAdminQuery(EsoteraDbContext db) =>
-            new(db, _j3Options);
+            new(db, new J3FulfillmentEligibilityService(db, _j3Options), _j3Options);
 
         public async Task<Guid> SeedPendingJ3Async()
         {
@@ -470,8 +503,28 @@ public class J3FulfillmentE2ETests
                 CreatedAtUtc = DateTime.UtcNow,
                 UpdatedAtUtc = DateTime.UtcNow
             });
-            var fulfillmentId = Guid.NewGuid();
+            var hex = Guid.NewGuid().ToString("N");
+            Span<char> digits = stackalloc char[44];
+            "35260820".AsSpan().CopyTo(digits);
+            for (var i = 8; i < 44; i++)
+                digits[i] = (char)('0' + (hex[(i - 8) % hex.Length] % 10));
             var now = DateTime.UtcNow;
+            db.FiscalInvoices.Add(new FiscalInvoice
+            {
+                Id = Guid.NewGuid(),
+                OrderId = orderId,
+                Status = FiscalInvoiceStatus.Authorized,
+                ChNFe = new string(digits),
+                Number = "2",
+                Series = "9",
+                AuthorizedAtUtc = now,
+                XmlCipher = "test-cipher",
+                XmlSha256 = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")[..32],
+                Source = FiscalInvoiceSource.ManualUpload,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+            var fulfillmentId = Guid.NewGuid();
             db.J3Fulfillments.Add(new J3Fulfillment
             {
                 Id = fulfillmentId,

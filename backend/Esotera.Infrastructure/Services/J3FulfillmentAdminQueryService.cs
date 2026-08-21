@@ -14,13 +14,16 @@ namespace Esotera.Infrastructure.Services;
 public sealed class J3FulfillmentAdminQueryService : IJ3FulfillmentAdminQueryService
 {
     private readonly EsoteraDbContext _context;
+    private readonly IJ3FulfillmentEligibilityService _eligibility;
     private readonly int _staleMinutes;
 
     public J3FulfillmentAdminQueryService(
         EsoteraDbContext context,
+        IJ3FulfillmentEligibilityService eligibility,
         IOptions<J3ShippingOptions> j3Options)
     {
         _context = context;
+        _eligibility = eligibility;
         _staleMinutes = j3Options.Value.ProcessingStaleMinutes > 0
             ? Math.Clamp(j3Options.Value.ProcessingStaleMinutes, 1, 24 * 60)
             : 15;
@@ -77,7 +80,8 @@ public sealed class J3FulfillmentAdminQueryService : IJ3FulfillmentAdminQuerySer
         if (row is null)
             return null;
 
-        return MapDetail(row, DateTime.UtcNow);
+        var eligibility = await _eligibility.EvaluateForOrderAsync(row.OrderId, cancellationToken);
+        return MapDetail(row, DateTime.UtcNow, eligibility);
     }
 
     private J3FulfillmentAdminListItemDto MapList(Domain.Entities.J3Fulfillment f, DateTime now)
@@ -101,7 +105,10 @@ public sealed class J3FulfillmentAdminQueryService : IJ3FulfillmentAdminQuerySer
             stuck);
     }
 
-    private J3FulfillmentAdminDetailDto MapDetail(Domain.Entities.J3Fulfillment f, DateTime now)
+    private J3FulfillmentAdminDetailDto MapDetail(
+        Domain.Entities.J3Fulfillment f,
+        DateTime now,
+        J3FulfillmentEligibilityResult eligibility)
     {
         var stuck = J3FulfillmentAdminFlags.IsPossiblyStuck(f.Status, f.UpdatedAtUtc, now, _staleMinutes);
         return new J3FulfillmentAdminDetailDto(
@@ -124,6 +131,8 @@ public sealed class J3FulfillmentAdminQueryService : IJ3FulfillmentAdminQuerySer
             f.CompletedAtUtc,
             J3FulfillmentAdminFlags.CanRetrySafely(f.Status),
             J3FulfillmentAdminFlags.NeedsManualReview(f.Status, stuck),
-            stuck);
+            stuck,
+            eligibility.IsEligible,
+            eligibility.ReasonCode);
     }
 }

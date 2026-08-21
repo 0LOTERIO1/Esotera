@@ -24,6 +24,8 @@ export type J3FulfillmentAdminDetail = J3FulfillmentAdminListItem & {
   paymentStatus: string;
   j3DeliveryPointId: string | null;
   lastErrorAtUtc: string | null;
+  canSendToJ3: boolean;
+  eligibilityReason: string;
 };
 
 export type J3FulfillmentAdminPaged = {

@@ -184,7 +184,7 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
     }
 
     [Fact]
-    public async Task InvalidCep_Retryable_BeforeHttp()
+    public async Task InvalidCep_SkippedBeforeClaim_ZeroHttp()
     {
         var fake = ResetFake();
         var fid = await SeedPendingWithOrderAsync(o => o.ShipCep = "123");
@@ -192,19 +192,50 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
 
         fake.CreateCallCount.Should().Be(0);
         var row = await LoadAsync(fid);
-        row.Status.Should().Be(J3FulfillmentStatus.RetryableFailure);
-        row.LastErrorCode.Should().Be(J3FulfillmentErrorCodes.InvalidCep);
-        row.AttemptCount.Should().Be(1);
+        row.Status.Should().Be(J3FulfillmentStatus.Pending);
+        row.AttemptCount.Should().Be(0);
     }
 
     [Fact]
-    public async Task ResidentialNull_Retryable_BeforeHttp()
+    public async Task ResidentialNull_SkippedBeforeClaim_ZeroHttp()
     {
         var fake = ResetFake();
         var fid = await SeedPendingWithOrderAsync(o => o.ShippingIsResidentialAddress = null);
         await ProcessAsync(fid);
         fake.CreateCallCount.Should().Be(0);
-        (await LoadAsync(fid)).Status.Should().Be(J3FulfillmentStatus.RetryableFailure);
+        var row = await LoadAsync(fid);
+        row.Status.Should().Be(J3FulfillmentStatus.Pending);
+        row.AttemptCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task MissingFiscalInvoice_SkippedBeforeClaim_ZeroHttp()
+    {
+        var fake = ResetFake();
+        var fid = await SeedPendingAsync(withFiscal: false);
+        await ProcessAsync(fid);
+        fake.CreateCallCount.Should().Be(0);
+        (await LoadAsync(fid)).Status.Should().Be(J3FulfillmentStatus.Pending);
+    }
+
+    [Fact]
+    public async Task FiscalUnknown_SkippedBeforeClaim_ZeroHttp()
+    {
+        var fake = ResetFake();
+        var fid = await SeedPendingAsync(withFiscal: true, fiscalStatus: FiscalInvoiceStatus.Unknown);
+        await ProcessAsync(fid);
+        fake.CreateCallCount.Should().Be(0);
+        (await LoadAsync(fid)).Status.Should().Be(J3FulfillmentStatus.Pending);
+    }
+
+    [Fact]
+    public async Task InvalidChNFe_SkippedBeforeClaim_ZeroHttp()
+    {
+        var fake = ResetFake();
+        var fid = await SeedPendingAsync(withFiscal: true, chNFe: new string('1', 43) + "A");
+        await ProcessAsync(fid);
+        fake.CreateCallCount.Should().Be(0);
+        (await LoadAsync(fid)).Status.Should().Be(J3FulfillmentStatus.Pending);
     }
 
     [Fact]
@@ -267,7 +298,7 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
         var fake = scope.ServiceProvider.GetRequiredService<FakeJ3FulfillmentClient>();
         fake.Reset();
         var db = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
-        var orderId = await SeedApprovedJ3OrderAsync(db);
+        var orderId = await SeedApprovedJ3OrderAsync(db, withFiscal: true);
         await scope.ServiceProvider.GetRequiredService<IJ3FulfillmentService>().EnsurePendingAsync(orderId);
         var fid = await db.J3Fulfillments.AsNoTracking().Where(f => f.OrderId == orderId).Select(f => f.Id).SingleAsync();
         await scope.ServiceProvider.GetRequiredService<IJ3FulfillmentProcessor>().ProcessAsync(fid);
@@ -305,11 +336,14 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
             .GetSnapshotAsync(fulfillmentId);
     }
 
-    private async Task<Guid> SeedPendingAsync()
+    private async Task<Guid> SeedPendingAsync(
+        bool withFiscal = true,
+        string fiscalStatus = FiscalInvoiceStatus.Authorized,
+        string? chNFe = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
-        var orderId = await SeedApprovedJ3OrderAsync(db);
+        var orderId = await SeedApprovedJ3OrderAsync(db, withFiscal, fiscalStatus, chNFe);
         await scope.ServiceProvider.GetRequiredService<IJ3FulfillmentService>().EnsurePendingAsync(orderId);
         return await db.J3Fulfillments.AsNoTracking().Where(f => f.OrderId == orderId).Select(f => f.Id).SingleAsync();
     }
@@ -318,7 +352,7 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
-        var orderId = await SeedApprovedJ3OrderAsync(db);
+        var orderId = await SeedApprovedJ3OrderAsync(db, withFiscal: true);
         var order = await db.Orders.SingleAsync(o => o.Id == orderId);
         mutate(order);
         await db.SaveChangesAsync();
@@ -339,7 +373,7 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
-        var orderId = await SeedApprovedJ3OrderAsync(db);
+        var orderId = await SeedApprovedJ3OrderAsync(db, withFiscal: true);
         var id = Guid.NewGuid();
         var now = DateTime.UtcNow;
         db.J3Fulfillments.Add(new J3Fulfillment
@@ -355,7 +389,11 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
         return id;
     }
 
-    private static async Task<Guid> SeedApprovedJ3OrderAsync(EsoteraDbContext db)
+    private static async Task<Guid> SeedApprovedJ3OrderAsync(
+        EsoteraDbContext db,
+        bool withFiscal = true,
+        string fiscalStatus = FiscalInvoiceStatus.Authorized,
+        string? chNFe = null)
     {
         var user = await db.Users.AsNoTracking().FirstAsync(u => u.Email == "cliente@esotera.demo");
         var order = new Order
@@ -387,6 +425,38 @@ public class J3FulfillmentProcessorTests : IClassFixture<J3FulfillmentEnabledWeb
         };
         db.Orders.Add(order);
         await db.SaveChangesAsync();
+
+        if (withFiscal)
+        {
+            var key = chNFe ?? NewSyntheticChNFe();
+            db.FiscalInvoices.Add(new FiscalInvoice
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                Status = fiscalStatus,
+                ChNFe = key,
+                Number = "2",
+                Series = "9",
+                AuthorizedAtUtc = fiscalStatus == FiscalInvoiceStatus.Authorized ? DateTime.UtcNow : null,
+                XmlCipher = "test-cipher-not-real",
+                XmlSha256 = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")[..32],
+                Source = FiscalInvoiceSource.ManualUpload,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
         return order.Id;
+    }
+
+    private static string NewSyntheticChNFe()
+    {
+        Span<char> digits = stackalloc char[44];
+        "35260820".AsSpan().CopyTo(digits);
+        var hex = Guid.NewGuid().ToString("N");
+        for (var i = 8; i < 44; i++)
+            digits[i] = (char)('0' + (hex[(i - 8) % hex.Length] % 10));
+        return new string(digits);
     }
 }

@@ -12,15 +12,16 @@ using Microsoft.Extensions.Options;
 namespace Esotera.Infrastructure.Services;
 
 /// <summary>
-/// Processor J3: Pending → claim → (RetryableFailure | Created | UnknownOutcome).
-/// Gate: J3_FULFILLMENT_ENABLED. Não exige J3_ENABLED (pedidos históricos já pagos).
-/// Sem stamp, sem retry, sem BackgroundService.
+/// Processor J3: Pending → eligibility → claim → (RetryableFailure | Created | UnknownOutcome).
+/// Gate: J3_FULFILLMENT_ENABLED + FiscalInvoice authorized + ChNFe.
+/// Sem stamp, sem retry, sem BackgroundService. Zero HTTP se inelegível.
 /// </summary>
 public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
 {
     private readonly EsoteraDbContext _context;
     private readonly IJ3FulfillmentService _fulfillment;
     private readonly IJ3FulfillmentClient _client;
+    private readonly IJ3FulfillmentEligibilityService _eligibility;
     private readonly J3ShippingOptions _j3;
     private readonly ILogger<J3FulfillmentProcessor> _logger;
 
@@ -28,12 +29,14 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
         EsoteraDbContext context,
         IJ3FulfillmentService fulfillment,
         IJ3FulfillmentClient client,
+        IJ3FulfillmentEligibilityService eligibility,
         IOptions<J3ShippingOptions> j3Options,
         ILogger<J3FulfillmentProcessor> logger)
     {
         _context = context;
         _fulfillment = fulfillment;
         _client = client;
+        _eligibility = eligibility;
         _j3 = j3Options.Value;
         _logger = logger;
     }
@@ -87,12 +90,20 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
 
         var orderPreview = await _context.Orders.AsNoTracking()
             .FirstOrDefaultAsync(o => o.Id == current.OrderId, cancellationToken);
-        if (!IsEligibleOrder(orderPreview))
+        var fiscalPreview = await LoadFiscalSnapshotAsync(current.OrderId, cancellationToken);
+        var preClaim = _eligibility.Evaluate(
+            orderPreview,
+            fiscalPreview,
+            current,
+            fulfillmentEnabled: true);
+
+        if (!preClaim.IsEligible)
         {
             _logger.LogInformation(
-                "J3 processor skipped fulfillment {FulfillmentId} order {OrderId}: not eligible (no claim, no HTTP).",
+                "J3 processor skipped fulfillment {FulfillmentId} order {OrderId}: {ReasonCode} (no claim, no HTTP).",
                 fulfillmentId,
-                current.OrderId);
+                current.OrderId,
+                preClaim.ReasonCode);
             return;
         }
 
@@ -107,9 +118,26 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
 
         var order = await _context.Orders.AsNoTracking()
             .FirstOrDefaultAsync(o => o.Id == current.OrderId, cancellationToken);
-        if (!IsEligibleOrder(order))
+        var fiscal = await LoadFiscalSnapshotAsync(current.OrderId, cancellationToken);
+        // Após claim o status é Processing; reavaliar Order/fiscal como se ainda Pending.
+        var pendingView = new J3Fulfillment
         {
-            await MarkRetryableFailureAsync(fulfillmentId, J3FulfillmentErrorCodes.Configuration, cancellationToken);
+            Id = current.Id,
+            OrderId = current.OrderId,
+            Status = J3FulfillmentStatus.Pending
+        };
+        var postClaim = _eligibility.Evaluate(
+            order,
+            fiscal,
+            pendingView,
+            fulfillmentEnabled: true);
+
+        if (!postClaim.IsEligible)
+        {
+            await MarkRetryableFailureAsync(
+                fulfillmentId,
+                J3FulfillmentEligibility.ToErrorCode(postClaim.ReasonCode),
+                cancellationToken);
             return;
         }
 
@@ -117,16 +145,7 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
             .FirstOrDefaultAsync(cancellationToken)
             ?? StoreSettingsService.CreateDefault();
 
-        if (order!.ShippingIsResidentialAddress is null)
-        {
-            await MarkRetryableFailureAsync(
-                fulfillmentId,
-                J3FulfillmentErrorCodes.ResidentialRequired,
-                cancellationToken);
-            return;
-        }
-
-        var built = J3CreateTmsOrderMapper.TryBuild(order, settings, _j3);
+        var built = J3CreateTmsOrderMapper.TryBuild(order!, settings, _j3);
         if (!built.IsValid)
         {
             await MarkRetryableFailureAsync(
@@ -136,7 +155,7 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
             return;
         }
 
-        var attempt = await _client.CreateOrderAsync(order, settings, cancellationToken);
+        var attempt = await _client.CreateOrderAsync(order!, settings, cancellationToken);
         switch (attempt.Outcome)
         {
             case J3CreateOrderOutcome.Success:
@@ -157,10 +176,37 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
         }
     }
 
-    private static bool IsEligibleOrder(Order? order) =>
-        order is not null
-        && order.Status == OrderStatus.PaymentApproved
-        && string.Equals(order.ShippingMethodId, ShippingMethod.J3, StringComparison.OrdinalIgnoreCase);
+    /// <summary>Projeção sem XmlCipher — nunca carrega blob cifrado neste caminho.</summary>
+    private async Task<J3FiscalEligibilitySnapshot?> LoadFiscalSnapshotAsync(
+        Guid orderId,
+        CancellationToken cancellationToken)
+    {
+        var row = await _context.FiscalInvoices.AsNoTracking()
+            .Where(f => f.OrderId == orderId)
+            .OrderByDescending(f => f.Status == FiscalInvoiceStatus.Authorized)
+            .ThenByDescending(f => f.UpdatedAtUtc)
+            .Select(f => new
+            {
+                f.Status,
+                f.ChNFe,
+                f.Number,
+                f.Series,
+                f.AuthorizedAtUtc
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (row is null)
+            return null;
+
+        return new J3FiscalEligibilitySnapshot
+        {
+            Status = row.Status,
+            ChNFe = row.ChNFe,
+            Number = row.Number,
+            Series = row.Series,
+            AuthorizedAtUtc = row.AuthorizedAtUtc
+        };
+    }
 
     private async Task MarkRetryableFailureAsync(
         Guid fulfillmentId,
@@ -240,7 +286,6 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
         }
         catch (Exception ex)
         {
-            // IDs J3 existem remotamente; segunda mutation é proibida. Status local pode permanecer Processing.
             _logger.LogCritical(
                 ex,
                 "J3 processor CRITICAL: remote Success for fulfillment {FulfillmentId} but local persist failed. Do not retry mutation.",

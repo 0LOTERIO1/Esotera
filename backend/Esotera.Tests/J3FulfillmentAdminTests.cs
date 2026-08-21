@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Esotera.Application.DTOs.Common;
@@ -15,7 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Esotera.Tests;
 
-/// <summary>Passo 4.4 — admin somente leitura. Zero HTTP/mutation J3.</summary>
+/// <summary>Passo 4.4 â€” admin somente leitura. Zero HTTP/mutation J3.</summary>
 public class J3FulfillmentAdminTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly CustomWebApplicationFactory _factory;
@@ -311,6 +311,19 @@ public class J3FulfillmentAdminTests : IClassFixture<CustomWebApplicationFactory
         dto.NeedsManualReview.Should().BeFalse();
         dto.CanRetrySafely.Should().BeFalse();
         dto.IsPossiblyStuck.Should().BeFalse();
+        dto.CanSendToJ3.Should().BeFalse();
+        dto.EligibilityReason.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task Detail_ExposesEligibility_WhenFlagDisabled()
+    {
+        var seeded = await SeedAsync(J3FulfillmentStatus.Pending, withFiscal: true);
+        await SetAdminAsync();
+        var dto = await GetDetailAsync(seeded.Id);
+        // CustomWebApplicationFactory: J3_FULFILLMENT_ENABLED=false
+        dto.CanSendToJ3.Should().BeFalse();
+        dto.EligibilityReason.Should().Be(J3FulfillmentEligibilityCodes.FeatureDisabled);
     }
 
     private async Task<PagedResult<J3FulfillmentAdminListItemDto>> ListAsync(string query)
@@ -337,7 +350,8 @@ public class J3FulfillmentAdminTests : IClassFixture<CustomWebApplicationFactory
         string? deliveryPointId = null,
         string? lastErrorCode = null,
         DateTime? lastErrorAtUtc = null,
-        DateTime? updatedAtUtc = null)
+        DateTime? updatedAtUtc = null,
+        bool withFiscal = false)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EsoteraDbContext>();
@@ -389,6 +403,30 @@ public class J3FulfillmentAdminTests : IClassFixture<CustomWebApplicationFactory
         };
         db.Orders.Add(order);
         db.J3Fulfillments.Add(fulfillment);
+        if (withFiscal)
+        {
+            var hex = Guid.NewGuid().ToString("N");
+            Span<char> digits = stackalloc char[44];
+            "35260820".AsSpan().CopyTo(digits);
+            for (var i = 8; i < 44; i++)
+                digits[i] = (char)('0' + (hex[(i - 8) % hex.Length] % 10));
+            db.FiscalInvoices.Add(new FiscalInvoice
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                Status = FiscalInvoiceStatus.Authorized,
+                ChNFe = new string(digits),
+                Number = "2",
+                Series = "9",
+                AuthorizedAtUtc = now,
+                XmlCipher = "test-cipher",
+                XmlSha256 = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N")[..32],
+                Source = FiscalInvoiceSource.ManualUpload,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+        }
+
         await db.SaveChangesAsync();
         return (fulfillment.Id, order.Id, order.OrderNumber);
     }

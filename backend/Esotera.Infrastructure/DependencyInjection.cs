@@ -270,6 +270,7 @@ public static class DependencyInjection
         services.AddScoped<IShippingQuoteService>(sp => sp.GetRequiredService<ShippingQuoteService>());
         services.AddScoped<ISimulatedShippingService>(sp => sp.GetRequiredService<SimulatedShippingService>());
         services.AddScoped<IJ3FulfillmentService, J3FulfillmentService>();
+        services.AddScoped<IJ3FulfillmentEligibilityService, J3FulfillmentEligibilityService>();
         services.AddScoped<IJ3FulfillmentProcessor, J3FulfillmentProcessor>();
         services.AddScoped<IJ3FulfillmentAdminQueryService, J3FulfillmentAdminQueryService>();
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();

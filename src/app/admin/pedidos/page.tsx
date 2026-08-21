@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { getAdminRepository } from "@/services/repositories";
 import { adminApi } from "@/services/api/adminApi";
 import { ApiError } from "@/services/api/apiClient";
+import {
+  j3EligibilityUserMessage,
+  j3FulfillmentAdminApi,
+} from "@/services/api/j3FulfillmentAdminApi";
 import type {
   AdminOrderDetail,
   AdminOrderSummary,
@@ -36,6 +40,7 @@ export default function AdminOrdersPage() {
   const [updating, setUpdating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importingFiscal, setImportingFiscal] = useState(false);
+  const [sendingJ3, setSendingJ3] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -168,9 +173,39 @@ export default function AdminOrdersPage() {
     }
   }
 
+  async function sendToJ3() {
+    if (!selected || sendingJ3) return;
+    setSendingJ3(true);
+    try {
+      const result = await j3FulfillmentAdminApi.processOrder(selected.id);
+      push(
+        "success",
+        result.processed
+          ? `J3: ${result.status}`
+          : `J3 (estado atual): ${result.status}`,
+      );
+      const refreshed = await getAdminRepository().getOrder(selected.id);
+      if (refreshed) setSelected(refreshed);
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError
+          ? err.detail ||
+              j3EligibilityUserMessage(err.reasonCode) ||
+              err.userMessage
+          : "Não foi possível enviar para a J3.",
+      );
+    } finally {
+      setSendingJ3(false);
+    }
+  }
+
   const canExportUpSeller =
     !!selected &&
     ["payment_approved", "preparing"].includes(selected.status);
+
+  const isJ3Shipping =
+    !!selected && selected.shipping.methodId.toLowerCase() === "j3";
 
   return (
     <div>
@@ -451,6 +486,25 @@ export default function AdminOrdersPage() {
                 </p>
               </div>
             </div>
+
+            {isJ3Shipping ? (
+              <div className="mt-4 rounded border border-esotera-border/70 p-3 text-sm">
+                <h3 className="text-esotera-text">Entrega J3</h3>
+                <p className="mt-1 text-xs text-esotera-muted">
+                  Envio manual para a J3 (backend é a autoridade; flag off =
+                  desabilitado).
+                </p>
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    disabled={sendingJ3}
+                    onClick={() => void sendToJ3()}
+                  >
+                    {sendingJ3 ? "Enviando…" : "Enviar para J3"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             {selected.statusHistory.length ? (
               <div className="mt-4">

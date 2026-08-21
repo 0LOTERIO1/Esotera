@@ -6,6 +6,7 @@ export class ApiError extends Error {
     public title: string,
     public detail?: string,
     public errors?: Record<string, string[]>,
+    public reasonCode?: string,
   ) {
     super(detail || title);
     this.name = "ApiError";
@@ -90,12 +91,24 @@ async function parseError(response: Response): Promise<ApiError> {
       title?: string;
       detail?: string;
       errors?: Record<string, string[]>;
+      reasonCode?: string;
+      eligibilityReason?: string;
+      extensions?: {
+        reasonCode?: string;
+        eligibilityReason?: string;
+      };
     };
+    const reasonCode =
+      data.reasonCode ||
+      data.eligibilityReason ||
+      data.extensions?.reasonCode ||
+      data.extensions?.eligibilityReason;
     return new ApiError(
       status,
       data.title || fallbackTitle,
       data.detail,
       data.errors,
+      typeof reasonCode === "string" ? reasonCode : undefined,
     );
   } catch {
     // HTML/texto do gateway (cold start Render, proxy, etc.)

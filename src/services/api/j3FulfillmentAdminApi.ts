@@ -63,4 +63,60 @@ export const j3FulfillmentAdminApi = {
       { auth: true },
     );
   },
+
+  processOrder(orderId: string) {
+    return apiClient.post<J3FulfillmentAdminProcessResult>(
+      `/api/admin/orders/${orderId}/j3-fulfillment/process`,
+      undefined,
+      { auth: true },
+    );
+  },
 };
+
+export type J3FulfillmentAdminProcessResult = {
+  orderId: string;
+  fulfillmentId: string | null;
+  orderNumber: string | null;
+  status: string;
+  canSendToJ3: boolean;
+  eligibilityReason: string;
+  j3OrderId: string | null;
+  j3OrderCode: string | null;
+  j3TrackingNumber: string | null;
+  attemptCount: number;
+  createdAtUtc: string | null;
+  updatedAtUtc: string | null;
+  needsManualReview: boolean;
+  processed: boolean;
+};
+
+export function j3EligibilityUserMessage(reasonCode: string | undefined | null): string {
+  switch (reasonCode) {
+    case "FeatureDisabled":
+      return "Integração J3 está desabilitada.";
+    case "MissingFiscalInvoice":
+    case "FiscalInvoiceNotAuthorized":
+      return "NF-e autorizada necessária.";
+    case "MissingNfeKey":
+    case "InvalidNfeKey":
+      return "Chave da NF-e inválida.";
+    case "IncompleteShippingAddress":
+      return "Endereço de entrega incompleto.";
+    case "MissingResidentialFlag":
+      return "Informe se o endereço é residencial ou comercial.";
+    case "WrongShippingMethod":
+      return "Pedido não utiliza frete J3.";
+    case "PaymentNotApproved":
+      return "Pagamento ainda não aprovado.";
+    case "FulfillmentAlreadyCreated":
+      return "Pedido já enviado para a J3.";
+    case "FulfillmentAlreadyExists":
+      return "Fulfillment J3 já está em processamento.";
+    case "UnknownOutcomeRequiresReview":
+      return "Resultado incerto. Não reenviar automaticamente.";
+    case "RetryableFailureNotAutoRetried":
+      return "Falha anterior exige revisão; retry automático não disponível nesta fase.";
+    default:
+      return "Não foi possível enviar para a J3.";
+  }
+}

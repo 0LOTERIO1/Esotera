@@ -1,6 +1,7 @@
 using Esotera.Application.DTOs.Admin;
 using Esotera.Application.DTOs.Common;
 using Esotera.Application.DTOs.Fiscal;
+using Esotera.Application.DTOs.J3;
 using Esotera.Application.DTOs.Orders;
 using Esotera.Application.Interfaces;
 using Esotera.Infrastructure.Services;
@@ -19,6 +20,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IOrderService _orderService;
     private readonly IUpSellerOrderExportService _upSellerExport;
     private readonly IFiscalInvoiceImportService _fiscalImport;
+    private readonly IJ3FulfillmentAdminProcessService _j3Process;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -27,6 +29,7 @@ public class AdminOrdersController : ControllerBase
         IOrderService orderService,
         IUpSellerOrderExportService upSellerExport,
         IFiscalInvoiceImportService fiscalImport,
+        IJ3FulfillmentAdminProcessService j3Process,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
@@ -34,6 +37,7 @@ public class AdminOrdersController : ControllerBase
         _orderService = orderService;
         _upSellerExport = upSellerExport;
         _fiscalImport = fiscalImport;
+        _j3Process = j3Process;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -96,6 +100,37 @@ public class AdminOrdersController : ControllerBase
             file.ContentType,
             cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Ação Admin manual: eligibility → EnsurePending → Processor.
+    /// Sem body. Sem HTTP J3 se flag off / inelegível. Sem XML/ChNFe/token na resposta.
+    /// </summary>
+    [HttpPost("{id:guid}/j3-fulfillment/process")]
+    public async Task<ActionResult<J3FulfillmentAdminProcessDto>> ProcessJ3Fulfillment(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await _j3Process.ProcessOrderAsync(id, cancellationToken);
+        if (outcome.HttpStatus == StatusCodes.Status404NotFound)
+            return NotFound();
+
+        if (outcome.HttpStatus == StatusCodes.Status409Conflict)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Não foi possível processar J3",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status409Conflict
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            problem.Extensions["eligibilityReason"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["fulfillment"] = outcome.Body;
+            return Conflict(problem);
+        }
+
+        return Ok(outcome.Body);
     }
 
     [HttpPatch("{id:guid}/status")]

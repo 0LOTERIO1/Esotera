@@ -273,6 +273,7 @@ public static class DependencyInjection
         services.AddScoped<IJ3FulfillmentEligibilityService, J3FulfillmentEligibilityService>();
         services.AddScoped<IJ3FulfillmentProcessor, J3FulfillmentProcessor>();
         services.AddScoped<IJ3FulfillmentAdminQueryService, J3FulfillmentAdminQueryService>();
+        services.AddScoped<IJ3FulfillmentAdminProcessService, J3FulfillmentAdminProcessService>();
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();

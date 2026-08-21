@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { ApiError } from "@/services/api/apiClient";
 import {
+  j3EligibilityUserMessage,
   j3FulfillmentAdminApi,
   type J3FulfillmentAdminDetail,
   type J3FulfillmentAdminListItem,
@@ -287,7 +288,14 @@ export default function AdminJ3FulfillmentsPage() {
         {detailLoading ? (
           <p className="text-sm text-esotera-muted">Carregando detalhe…</p>
         ) : selected ? (
-          <J3FulfillmentDetail detail={selected} />
+          <J3FulfillmentDetail
+            detail={selected}
+            onRefreshDetail={async () => {
+              const refreshed = await j3FulfillmentAdminApi.get(selected.id);
+              setSelected(refreshed);
+              void load();
+            }}
+          />
         ) : (
           <p className="text-sm text-esotera-muted">
             Selecione um registro para ver o detalhe operacional.
@@ -298,7 +306,57 @@ export default function AdminJ3FulfillmentsPage() {
   );
 }
 
-function J3FulfillmentDetail({ detail }: { detail: J3FulfillmentAdminDetail }) {
+function J3FulfillmentDetail({
+  detail,
+  onRefreshDetail,
+}: {
+  detail: J3FulfillmentAdminDetail;
+  onRefreshDetail: () => Promise<void>;
+}) {
+  const [sending, setSending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState<string | null>(null);
+
+  const featureDisabled = detail.eligibilityReason === "FeatureDisabled";
+  const canSend =
+    detail.canSendToJ3 &&
+    detail.status === "pending" &&
+    !detail.needsManualReview &&
+    !sending;
+
+  async function sendToJ3() {
+    if (sending) return;
+    setSending(true);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      const result = await j3FulfillmentAdminApi.processOrder(detail.orderId);
+      setActionOk(
+        result.processed
+          ? `Status J3: ${result.status}`
+          : `Estado atual: ${result.status}`,
+      );
+      await onRefreshDetail();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setActionError(
+          err.detail ||
+            j3EligibilityUserMessage(err.reasonCode) ||
+            err.userMessage,
+        );
+      } else {
+        setActionError("Não foi possível enviar para a J3.");
+      }
+      try {
+        await onRefreshDetail();
+      } catch {
+        /* ignore refresh errors */
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div className="space-y-4 text-sm">
       <div>
@@ -308,6 +366,31 @@ function J3FulfillmentDetail({ detail }: { detail: J3FulfillmentAdminDetail }) {
         <p className="mt-1">
           <J3StatusBadge status={detail.status} />
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <Button
+          type="button"
+          disabled={!canSend}
+          onClick={() => void sendToJ3()}
+        >
+          {sending ? "Enviando…" : "Enviar para J3"}
+        </Button>
+        {featureDisabled ? (
+          <p className="text-xs text-esotera-muted">J3 desabilitada</p>
+        ) : !detail.canSendToJ3 ? (
+          <p className="text-xs text-esotera-muted">
+            {j3EligibilityUserMessage(detail.eligibilityReason)}
+          </p>
+        ) : null}
+        {actionError ? (
+          <p role="alert" className="text-xs text-esotera-error">
+            {actionError}
+          </p>
+        ) : null}
+        {actionOk ? (
+          <p className="text-xs text-esotera-success">{actionOk}</p>
+        ) : null}
       </div>
 
       {detail.status === "unknown_outcome" ? (

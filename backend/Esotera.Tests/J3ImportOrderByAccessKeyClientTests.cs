@@ -255,6 +255,7 @@ public class J3ImportOrderByAccessKeyClientTests
         return new J3ImportOrderByAccessKeyHttpClient(
             http,
             Options.Create(opts),
+            new FakeJ3SellerAuthProvider(),
             NullLogger<J3ImportOrderByAccessKeyHttpClient>.Instance);
     }
 

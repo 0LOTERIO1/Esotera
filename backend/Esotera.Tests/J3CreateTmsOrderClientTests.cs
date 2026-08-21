@@ -645,7 +645,11 @@ public class J3CreateTmsOrderClientTests
         var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
         var opts = EnabledOptions();
         configure?.Invoke(opts);
-        return new J3FulfillmentHttpClient(http, Options.Create(opts), NullLogger<J3FulfillmentHttpClient>.Instance);
+        return new J3FulfillmentHttpClient(
+            http,
+            Options.Create(opts),
+            new FakeJ3SellerAuthProvider(),
+            NullLogger<J3FulfillmentHttpClient>.Instance);
     }
 
     private static J3ShippingOptions EnabledOptions() => new()

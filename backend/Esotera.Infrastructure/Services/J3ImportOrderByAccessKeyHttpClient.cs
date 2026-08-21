@@ -29,15 +29,18 @@ public sealed class J3ImportOrderByAccessKeyHttpClient : IJ3ImportOrderByAccessK
 
     private readonly HttpClient _http;
     private readonly J3ShippingOptions _options;
+    private readonly IJ3SellerAuthProvider _sellerAuth;
     private readonly ILogger<J3ImportOrderByAccessKeyHttpClient> _logger;
 
     public J3ImportOrderByAccessKeyHttpClient(
         HttpClient http,
         IOptions<J3ShippingOptions> options,
+        IJ3SellerAuthProvider sellerAuth,
         ILogger<J3ImportOrderByAccessKeyHttpClient> logger)
     {
         _http = http;
         _options = options.Value;
+        _sellerAuth = sellerAuth;
         _logger = logger;
     }
 
@@ -52,7 +55,7 @@ public sealed class J3ImportOrderByAccessKeyHttpClient : IJ3ImportOrderByAccessK
         if (!_options.ImportByAccessKeyEnabled)
             return LocalFailure(order.Id, J3FulfillmentErrorCodes.ImportByAccessKeyDisabled);
 
-        if (!_options.HasValidGraphQlUrl || string.IsNullOrWhiteSpace(_options.Token))
+        if (!_options.HasValidGraphQlUrl || !_options.HasSellerBearerSource)
             return LocalFailure(order.Id, J3FulfillmentErrorCodes.Configuration);
 
         var built = J3ImportOrderByAccessKeyMapper.TryBuild(order, parsedFiscal, _options);
@@ -78,9 +81,14 @@ public sealed class J3ImportOrderByAccessKeyHttpClient : IJ3ImportOrderByAccessK
         J3ImportOrderByAccessKeyCommand command,
         CancellationToken cancellationToken)
     {
+        var (bearer, authError) = await J3SellerBearerResolver.ResolveAsync(
+            _options, _sellerAuth, cancellationToken);
+        if (string.IsNullOrWhiteSpace(bearer))
+            return LocalFailure(command.LocalOrderId, authError ?? J3FulfillmentErrorCodes.Configuration);
+
         var endpoint = new Uri(_options.GraphQlUrl!.Trim(), UriKind.Absolute);
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token!.Trim());
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         var companyGroup = string.IsNullOrWhiteSpace(_options.CompanyGroupCode)

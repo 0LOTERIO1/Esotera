@@ -38,15 +38,18 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
     /// </summary>
     private readonly HttpClient _http;
     private readonly J3ShippingOptions _options;
+    private readonly IJ3SellerAuthProvider _sellerAuth;
     private readonly ILogger<J3FulfillmentHttpClient> _logger;
 
     public J3FulfillmentHttpClient(
         HttpClient http,
         IOptions<J3ShippingOptions> options,
+        IJ3SellerAuthProvider sellerAuth,
         ILogger<J3FulfillmentHttpClient> logger)
     {
         _http = http;
         _options = options.Value;
+        _sellerAuth = sellerAuth;
         _logger = logger;
     }
 
@@ -69,7 +72,7 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
         if (string.IsNullOrWhiteSpace(_options.SellerInformationId))
             return LocalFailure(order.Id, J3FulfillmentErrorCodes.MissingSellerInformationId);
 
-        if (!_options.HasValidGraphQlUrl || string.IsNullOrWhiteSpace(_options.Token))
+        if (!_options.HasValidGraphQlUrl || !_options.HasSellerBearerSource)
             return LocalFailure(order.Id, J3FulfillmentErrorCodes.Configuration);
 
         // Fail-closed: sem NF-e authorized + ChNFe válida → zero HTTP.
@@ -125,9 +128,14 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
         J3CreateTmsOrderCommand command,
         CancellationToken cancellationToken)
     {
+        var (bearer, authError) = await J3SellerBearerResolver.ResolveAsync(
+            _options, _sellerAuth, cancellationToken);
+        if (string.IsNullOrWhiteSpace(bearer))
+            return LocalFailure(command.LocalOrderId, authError ?? J3FulfillmentErrorCodes.Configuration);
+
         var endpoint = new Uri(_options.GraphQlUrl!.Trim(), UriKind.Absolute);
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Token!.Trim());
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         var companyGroup = string.IsNullOrWhiteSpace(_options.CompanyGroupCode)

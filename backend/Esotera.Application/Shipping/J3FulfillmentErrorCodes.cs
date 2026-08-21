@@ -22,6 +22,12 @@ public static class J3FulfillmentErrorCodes
     public const string FulfillmentDisabled = "FULFILLMENT_DISABLED";
     public const string ImportByAccessKeyDisabled = "IMPORT_BY_ACCESS_KEY_DISABLED";
     public const string FulfillmentMustBeDisabled = "FULFILLMENT_MUST_BE_DISABLED";
+    public const string AuthLoginFailed = "AUTH_LOGIN_FAILED";
+    public const string AuthHttp401 = "AUTH_HTTP_401";
+    public const string AuthTokenMissing = "AUTH_TOKEN_MISSING";
+    public const string AuthJsonInvalid = "AUTH_JSON_INVALID";
+    public const string AuthSellerMismatch = "AUTH_SELLER_MISMATCH";
+    public const string AuthConfiguration = "AUTH_CONFIGURATION";
     public const string MissingSellerId = "MISSING_SELLER_ID";
     public const string MissingSellerInformationId = "MISSING_SELLER_INFORMATION_ID";
     public const string ResidentialRequired = "RESIDENTIAL_REQUIRED";

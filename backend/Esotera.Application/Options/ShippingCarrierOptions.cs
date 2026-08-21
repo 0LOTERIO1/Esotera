@@ -93,8 +93,24 @@ public class J3ShippingOptions
     /// <summary>Endpoint GraphQL J3 Flex. Env: J3_GRAPHQL_URL.</summary>
     public string? GraphQlUrl { get; set; }
 
-    /// <summary>Bearer/token J3. Nunca logar. Env: J3_TOKEN.</summary>
+    /// <summary>Bearer/token J3 estático (legado). Nunca logar. Env: J3_TOKEN.
+    /// Coverage continua usando este token. Mutations Seller preferem login quando configurado.</summary>
     public string? Token { get; set; }
+
+    /// <summary>Email do login Seller (portal). Env: J3_LOGIN_EMAIL. Nunca logar valor.</summary>
+    public string? LoginEmail { get; set; }
+
+    /// <summary>Senha do login Seller. Env: J3_LOGIN_PASSWORD. Somente env secret. Nunca logar.</summary>
+    public string? LoginPassword { get; set; }
+
+    /// <summary>
+    /// URL do login REST. Default portal oficial.
+    /// Env: J3_LOGIN_URL.
+    /// </summary>
+    public string LoginUrl { get; set; } = "https://app.j3tms.com.br/api/auth/login";
+
+    /// <summary>Minutos antes do exp JWT para renovar. Env: J3_AUTH_RENEW_SKEW_MINUTES. Default 5.</summary>
+    public int AuthRenewSkewMinutes { get; set; } = 5;
 
     /// <summary>Código do grupo de empresa. Default comercial não-secreto.</summary>
     public string CompanyGroupCode { get; set; } = "J3";
@@ -155,6 +171,23 @@ public class J3ShippingOptions
     /// Não é regra oficial J3.
     /// </summary>
     public bool PackageIsValuable { get; set; }
+
+    /// <summary>Login Seller configurado (email + password).</summary>
+    public bool HasSellerLoginCredentials =>
+        !string.IsNullOrWhiteSpace(LoginEmail)
+        && !string.IsNullOrWhiteSpace(LoginPassword);
+
+    /// <summary>URL de login absoluta válida.</summary>
+    public bool HasValidLoginUrl =>
+        !string.IsNullOrWhiteSpace(LoginUrl)
+        && Uri.TryCreate(LoginUrl.Trim(), UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    /// <summary>
+    /// Bearer disponível para mutations Seller: login credentials OU token estático legado.
+    /// </summary>
+    public bool HasSellerBearerSource =>
+        HasSellerLoginCredentials || !string.IsNullOrWhiteSpace(Token);
 
     /// <summary>Preço em centavos configurado e válido (&gt; 0). Ausência/0/negativo = inválido.</summary>
     public bool HasValidStandardPriceCents => StandardPriceCents > 0;

@@ -167,6 +167,18 @@ public static class DependencyInjection
                 configuration["J3_TOKEN"],
                 configuration["J3:Token"],
                 options.Token);
+            options.LoginEmail = FirstNonEmpty(
+                configuration["J3_LOGIN_EMAIL"],
+                configuration["J3:LoginEmail"],
+                options.LoginEmail);
+            options.LoginPassword = FirstNonEmpty(
+                configuration["J3_LOGIN_PASSWORD"],
+                configuration["J3:LoginPassword"],
+                options.LoginPassword);
+            options.LoginUrl = FirstNonEmpty(
+                configuration["J3_LOGIN_URL"],
+                configuration["J3:LoginUrl"],
+                options.LoginUrl) ?? options.LoginUrl;
             options.CompanyGroupCode = FirstNonEmpty(
                 configuration["J3_COMPANY_GROUP_CODE"],
                 configuration["J3:CompanyGroupCode"],
@@ -233,6 +245,18 @@ public static class DependencyInjection
                 && staleMinutes > 0)
             {
                 options.ProcessingStaleMinutes = Math.Clamp(staleMinutes, 1, 24 * 60);
+            }
+
+            if (int.TryParse(
+                    FirstNonEmpty(
+                        configuration["J3_AUTH_RENEW_SKEW_MINUTES"],
+                        configuration["J3:AuthRenewSkewMinutes"]),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var skewMinutes)
+                && skewMinutes > 0)
+            {
+                options.AuthRenewSkewMinutes = Math.Clamp(skewMinutes, 1, 30);
             }
         });
 
@@ -308,6 +332,9 @@ public static class DependencyInjection
             services.AddSingleton<FakeJ3ImportOrderByAccessKeyClient>();
             services.AddSingleton<IJ3ImportOrderByAccessKeyClient>(sp =>
                 sp.GetRequiredService<FakeJ3ImportOrderByAccessKeyClient>());
+            services.AddSingleton<FakeJ3SellerAuthProvider>();
+            services.AddSingleton<IJ3SellerAuthProvider>(sp =>
+                sp.GetRequiredService<FakeJ3SellerAuthProvider>());
         }
         else
         {
@@ -347,6 +374,16 @@ public static class DependencyInjection
         // BaseAddress não é fixado: cada request usa J3_GRAPHQL_URL absoluto das options.
         if (!isTestEnvironment)
         {
+            services.AddHttpClient(J3SellerAuthProvider.HttpClientName, (sp, client) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;
+                var seconds = opts.TimeoutSeconds > 0
+                    ? Math.Clamp(opts.TimeoutSeconds, 3, 60)
+                    : 15;
+                client.Timeout = TimeSpan.FromSeconds(seconds);
+            });
+            services.AddSingleton<IJ3SellerAuthProvider, J3SellerAuthProvider>();
+
             services.AddHttpClient<IJ3Client, J3Client>((sp, client) =>
             {
                 var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;

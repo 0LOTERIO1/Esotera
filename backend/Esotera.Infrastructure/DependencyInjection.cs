@@ -307,6 +307,7 @@ public static class DependencyInjection
         services.AddScoped<IJ3FulfillmentAdminQueryService, J3FulfillmentAdminQueryService>();
         services.AddScoped<IJ3FulfillmentAdminProcessService, J3FulfillmentAdminProcessService>();
         services.AddScoped<IJ3ImportOrderByAccessKeyAdminService, J3ImportOrderByAccessKeyAdminService>();
+        services.AddScoped<IJ3ReconcileAdminService, J3ReconcileAdminService>();
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
@@ -335,6 +336,9 @@ public static class DependencyInjection
             services.AddSingleton<FakeJ3SellerAuthProvider>();
             services.AddSingleton<IJ3SellerAuthProvider>(sp =>
                 sp.GetRequiredService<FakeJ3SellerAuthProvider>());
+            services.AddSingleton<FakeJ3OrderLookupClient>();
+            services.AddSingleton<IJ3OrderLookupClient>(sp =>
+                sp.GetRequiredService<FakeJ3OrderLookupClient>());
         }
         else
         {
@@ -410,6 +414,20 @@ public static class DependencyInjection
 
             // importOrderByAccessKey — cliente separado; sem fallback para createTmsOrders.
             services.AddHttpClient<IJ3ImportOrderByAccessKeyClient, J3ImportOrderByAccessKeyHttpClient>((sp, client) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;
+                var seconds = opts.TimeoutSeconds > 0
+                    ? Math.Clamp(opts.TimeoutSeconds, 3, 60)
+                    : 15;
+                client.Timeout = TimeSpan.FromSeconds(seconds);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false
+            });
+
+            // Lookup read-only searchOrderByCode — reconciliação admin.
+            services.AddHttpClient<IJ3OrderLookupClient, J3OrderLookupHttpClient>((sp, client) =>
             {
                 var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;
                 var seconds = opts.TimeoutSeconds > 0

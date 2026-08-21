@@ -22,6 +22,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IFiscalInvoiceImportService _fiscalImport;
     private readonly IJ3FulfillmentAdminProcessService _j3Process;
     private readonly IJ3ImportOrderByAccessKeyAdminService _j3ImportByAccessKey;
+    private readonly IJ3ReconcileAdminService _j3Reconcile;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -32,6 +33,7 @@ public class AdminOrdersController : ControllerBase
         IFiscalInvoiceImportService fiscalImport,
         IJ3FulfillmentAdminProcessService j3Process,
         IJ3ImportOrderByAccessKeyAdminService j3ImportByAccessKey,
+        IJ3ReconcileAdminService j3Reconcile,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
@@ -41,6 +43,7 @@ public class AdminOrdersController : ControllerBase
         _fiscalImport = fiscalImport;
         _j3Process = j3Process;
         _j3ImportByAccessKey = j3ImportByAccessKey;
+        _j3Reconcile = j3Reconcile;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -198,6 +201,61 @@ public class AdminOrdersController : ControllerBase
             if (outcome.Body is not null)
                 problem.Extensions["result"] = outcome.Body;
             return UnprocessableEntity(problem);
+        }
+
+        return Ok(outcome.Body);
+    }
+
+    /// <summary>
+    /// Reconciliação admin: lookup read-only searchOrderByCode + promove J3Fulfillment unknown_outcome → Created.
+    /// Zero createTmsOrders / importOrderByAccessKey. Independente das flags de mutation.
+    /// </summary>
+    [HttpPost("{id:guid}/j3-reconcile")]
+    public async Task<ActionResult<J3ReconcileAdminResultDto>> ReconcileJ3(
+        Guid id,
+        [FromBody] J3ReconcileConfirmRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null
+            || string.IsNullOrWhiteSpace(request.ConfirmOrderNumber)
+            || string.IsNullOrWhiteSpace(request.ConfirmJ3OrderCode))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Confirmação obrigatória",
+                Detail = "Informe confirmOrderNumber e confirmJ3OrderCode.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var outcome = await _j3Reconcile.ReconcileAsync(id, request, cancellationToken);
+        if (outcome.HttpStatus == StatusCodes.Status404NotFound)
+            return NotFound();
+
+        if (outcome.HttpStatus == StatusCodes.Status400BadRequest)
+        {
+            var bad = new ProblemDetails
+            {
+                Title = "Confirmação inválida",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status400BadRequest
+            };
+            bad.Extensions["reasonCode"] = outcome.ReasonCode;
+            return BadRequest(bad);
+        }
+
+        if (outcome.HttpStatus == StatusCodes.Status409Conflict)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Não foi possível reconciliar com a J3",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status409Conflict
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["result"] = outcome.Body;
+            return Conflict(problem);
         }
 
         return Ok(outcome.Body);

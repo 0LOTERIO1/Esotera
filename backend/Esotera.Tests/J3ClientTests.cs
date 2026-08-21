@@ -56,8 +56,10 @@ public class J3ClientTests
             .GetProperty("zipcode")
             .GetString();
         zip.Should().Be("01310-100");
+        doc.RootElement.GetProperty("operationName").GetString().Should().Be("IsValidServiceArea");
+        doc.RootElement.TryGetProperty("query", out _).Should().BeTrue();
+        doc.RootElement.TryGetProperty("variables", out _).Should().BeTrue();
         body.Should().Contain("isValidServiceArea");
-        body.Should().Contain("IsValidServiceArea");
     }
 
     [Fact]
@@ -295,6 +297,8 @@ public class J3ClientTests
         result.CanceledAt.Should().Be(DateTimeOffset.Parse("2026-01-05T06:07:08Z"));
 
         using var doc = JsonDocument.Parse(body!);
+        doc.RootElement.GetProperty("operationName").GetString().Should().Be("GetJ3Tracking");
+        doc.RootElement.TryGetProperty("query", out _).Should().BeTrue();
         doc.RootElement.GetProperty("variables").GetProperty("trackingNumber").GetString()
             .Should().Be("TRK-123");
         body.Should().Contain("getTrackingOrderSeller");

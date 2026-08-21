@@ -192,7 +192,7 @@ public sealed class J3Client : IJ3Client
             : _options.CompanyGroupCode.Trim();
         request.Headers.TryAddWithoutValidation("x-company-group-code", companyGroup);
 
-        var body = JsonSerializer.Serialize(new { query, variables }, JsonOptions);
+        var body = JsonSerializer.Serialize(new { query, operationName, variables }, JsonOptions);
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
         HttpResponseMessage response;

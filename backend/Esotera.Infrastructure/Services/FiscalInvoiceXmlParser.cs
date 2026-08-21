@@ -117,14 +117,42 @@ public sealed class FiscalInvoiceXmlParser : IFiscalInvoiceXmlParser
             AuthorizedAtUtc = authorized ? TryParseXmlDateUtc(dhRecbtoRaw) : null,
             IssuerCnpj = DigitsOrNull(Text(emit, "CNPJ")),
             IssuerCrt = NullIfWhite(Text(emit, "CRT")),
+            IssuerName = NullIfWhite(Text(emit, "xNome")),
+            IssuerTradeName = NullIfWhite(Text(emit, "xFant")),
+            IssuerAddress = ParseAddress(Child(emit, "enderEmit")),
             RecipientDocument = recipientDoc,
             RecipientName = NullIfWhite(Text(dest, "xNome")),
+            RecipientAddress = ParseAddress(Child(dest, "enderDest")),
             ProtocolNumber = protocol,
             ProtocolStatusCode = cStat,
             ProtocolStatusMessage = xMotivo,
             InvoiceTotal = TryParseDecimal(Text(total, "vNF")),
             Items = ParseItems(infNFe),
             HasAuthorizationEvidence = authorized
+        };
+    }
+
+    private static FiscalNfeAddressSnapshot? ParseAddress(XElement? ender)
+    {
+        if (ender is null)
+            return null;
+
+        var street = NullIfWhite(Text(ender, "xLgr"));
+        var number = NullIfWhite(Text(ender, "nro"));
+        var complement = NullIfWhite(Text(ender, "xCpl"));
+        var zip = DigitsOrNull(Text(ender, "CEP"));
+        var phone = DigitsOrNull(Text(ender, "fone"));
+
+        if (street is null && number is null && zip is null && phone is null && complement is null)
+            return null;
+
+        return new FiscalNfeAddressSnapshot
+        {
+            Street = street,
+            Number = number,
+            Complement = complement,
+            ZipCodeDigits = zip,
+            PhoneDigits = phone
         };
     }
 
@@ -183,7 +211,8 @@ public sealed class FiscalInvoiceXmlParser : IFiscalInvoiceXmlParser
                 Ncm: NullIfWhite(Text(prod, "NCM")),
                 Cfop: NullIfWhite(Text(prod, "CFOP")),
                 Unit: NullIfWhite(Text(prod, "uCom")),
-                ExternalOrderRef: NullIfWhite(Text(prod, "xPed"))));
+                ExternalOrderRef: NullIfWhite(Text(prod, "xPed")),
+                ProductName: NullIfWhite(Text(prod, "xProd"))));
         }
 
         return list;

@@ -542,6 +542,22 @@ public class J3CreateTmsOrderClientTests
     }
 
     [Fact]
+    public async Task GraphqlUnauthenticated_IsDefiniteFailure_SinglePost()
+    {
+        var calls = 0;
+        var client = CreateClient(_ =>
+        {
+            calls++;
+            return OkJson("""{"errors":[{"message":"nope","extensions":{"code":"UNAUTHENTICATED"}}]}""");
+        });
+
+        var result = await client.CreateOrderAsync(ValidOrder(), ValidSettings(), ValidFiscal());
+        result.Outcome.Should().Be(J3CreateOrderOutcome.DefiniteFailure);
+        result.ErrorCode.Should().Be(J3FulfillmentErrorCodes.GraphqlUnauthenticated);
+        calls.Should().Be(1);
+    }
+
+    [Fact]
     public async Task GraphqlValidationFailed_IsDefiniteFailure_SinglePost()
     {
         var calls = 0;

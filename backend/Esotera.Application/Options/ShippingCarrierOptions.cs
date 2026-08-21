@@ -76,6 +76,13 @@ public class J3ShippingOptions
     public bool Enabled { get; set; }
 
     /// <summary>
+    /// Default false — habilita mutation importOrderByAccessKey (recovery admin controlado).
+    /// Independente de J3_FULFILLMENT_ENABLED (createTmsOrders).
+    /// Env: J3_IMPORT_BY_ACCESS_KEY_ENABLED.
+    /// </summary>
+    public bool ImportByAccessKeyEnabled { get; set; }
+
+    /// <summary>
     /// Default false — desativa PROCESSAMENTO/MUTATION J3 (claim, createTmsOrder futuro).
     /// Não impede registrar J3Fulfillment Pending após pagamento.
     /// Env: J3_FULFILLMENT_ENABLED. Processor/mutations de fulfillment usam esta flag
@@ -100,6 +107,13 @@ public class J3ShippingOptions
 
     /// <summary>CEP de origem opcional. Env: J3_ORIGIN_ZIP.</summary>
     public string? OriginZip { get; set; }
+
+    /// <summary>
+    /// Telefone corporativo do emitente fiscal (fallback para importOrderByAccessKey / emitEnder.fone).
+    /// Ordem: XML enderEmit/fone → este valor (só dígitos) → fail-closed.
+    /// Env: J3_EMITTER_PHONE. Nunca usar CustomerPhone / seller / Users.
+    /// </summary>
+    public string? EmitterPhone { get; set; }
 
     /// <summary>
     /// Preço padrão J3 em centavos (fonte única do preço da opção J3).

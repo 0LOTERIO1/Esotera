@@ -36,12 +36,6 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
     /// Só tratamos como DefiniteFailure se TODOS os errors[] tiverem exclusivamente estes códigos.
     /// Mensagem "validation" genérica ou código ausente → UnknownOutcome.
     /// </summary>
-    private static readonly HashSet<string> GraphqlPreExecutionCodes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "GRAPHQL_PARSE_FAILED",
-        "GRAPHQL_VALIDATION_FAILED"
-    };
-
     private readonly HttpClient _http;
     private readonly J3ShippingOptions _options;
     private readonly ILogger<J3FulfillmentHttpClient> _logger;
@@ -268,14 +262,31 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
             && errors.ValueKind == JsonValueKind.Array
             && errors.GetArrayLength() > 0)
         {
+            var insights = J3GraphQlErrorClassifier.Extract(errors);
+            foreach (var i in insights)
+            {
+                _logger.LogWarning(
+                    "J3 GraphQL error code {GraphqlErrorCode} message {GraphqlErrorMessage}",
+                    J3FulfillmentErrorCodes.Sanitize(i.Code) ?? "UNKNOWN",
+                    i.SanitizedMessage ?? "");
+            }
+
+            if (J3GraphQlErrorClassifier.AllAuthRejected(errors))
+            {
+                var authCode = J3GraphQlErrorClassifier.AuthFailureCode(insights);
+                LogOutcome(orderId, J3CreateOrderOutcome.DefiniteFailure, authCode, status, durationMs);
+                return J3CreateOrderAttemptResult.DefiniteFailure(authCode);
+            }
+
             if (AllPreExecution(errors))
             {
                 LogOutcome(orderId, J3CreateOrderOutcome.DefiniteFailure, J3FulfillmentErrorCodes.GraphqlValidation, status, durationMs);
                 return J3CreateOrderAttemptResult.DefiniteFailure(J3FulfillmentErrorCodes.GraphqlValidation);
             }
 
-            LogOutcome(orderId, J3CreateOrderOutcome.UnknownOutcome, J3FulfillmentErrorCodes.GraphqlAmbiguous, status, durationMs);
-            return J3CreateOrderAttemptResult.Unknown(J3FulfillmentErrorCodes.GraphqlAmbiguous);
+            var primary = J3GraphQlErrorClassifier.PrimaryErrorCode(insights);
+            LogOutcome(orderId, J3CreateOrderOutcome.UnknownOutcome, primary, status, durationMs);
+            return J3CreateOrderAttemptResult.Unknown(primary);
         }
 
         if (!root.TryGetProperty("data", out var data)
@@ -369,40 +380,8 @@ public sealed class J3FulfillmentHttpClient : IJ3FulfillmentClient
             ? J3FulfillmentErrorCodes.TimeoutUnknown
             : J3FulfillmentErrorCodes.NetworkUnknown;
 
-    private static bool AllPreExecution(JsonElement errors)
-    {
-        var any = false;
-        foreach (var err in errors.EnumerateArray())
-        {
-            any = true;
-            var code = ReadGraphQlCode(err);
-            if (code is null || !GraphqlPreExecutionCodes.Contains(code))
-                return false;
-        }
-
-        return any;
-    }
-
-    private static string? ReadGraphQlCode(JsonElement err)
-    {
-        if (err.ValueKind != JsonValueKind.Object)
-            return null;
-        if (err.TryGetProperty("extensions", out var ext)
-            && ext.ValueKind == JsonValueKind.Object
-            && ext.TryGetProperty("code", out var codeEl)
-            && codeEl.ValueKind == JsonValueKind.String)
-        {
-            return codeEl.GetString();
-        }
-
-        if (err.TryGetProperty("code", out var top)
-            && top.ValueKind == JsonValueKind.String)
-        {
-            return top.GetString();
-        }
-
-        return null;
-    }
+    private static bool AllPreExecution(JsonElement errors) =>
+        J3GraphQlErrorClassifier.AllPreExecution(errors);
 
     private static string? ReadSanitizedApiErrorCode(JsonElement created)
     {

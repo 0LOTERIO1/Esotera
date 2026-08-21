@@ -21,6 +21,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IUpSellerOrderExportService _upSellerExport;
     private readonly IFiscalInvoiceImportService _fiscalImport;
     private readonly IJ3FulfillmentAdminProcessService _j3Process;
+    private readonly IJ3ImportOrderByAccessKeyAdminService _j3ImportByAccessKey;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -30,6 +31,7 @@ public class AdminOrdersController : ControllerBase
         IUpSellerOrderExportService upSellerExport,
         IFiscalInvoiceImportService fiscalImport,
         IJ3FulfillmentAdminProcessService j3Process,
+        IJ3ImportOrderByAccessKeyAdminService j3ImportByAccessKey,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
@@ -38,6 +40,7 @@ public class AdminOrdersController : ControllerBase
         _upSellerExport = upSellerExport;
         _fiscalImport = fiscalImport;
         _j3Process = j3Process;
+        _j3ImportByAccessKey = j3ImportByAccessKey;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -128,6 +131,73 @@ public class AdminOrdersController : ControllerBase
             if (outcome.Body is not null)
                 problem.Extensions["fulfillment"] = outcome.Body;
             return Conflict(problem);
+        }
+
+        return Ok(outcome.Body);
+    }
+
+    /// <summary>
+    /// Recovery Admin controlado: UMA chamada importOrderByAccessKey.
+    /// Exige confirmação do OrderNumber. Nunca createTmsOrders. Nunca promove Created.
+    /// </summary>
+    [HttpPost("{id:guid}/j3-import-by-access-key")]
+    public async Task<ActionResult<J3ImportByAccessKeyAdminResultDto>> ImportJ3ByAccessKey(
+        Guid id,
+        [FromBody] J3ImportByAccessKeyConfirmRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.ConfirmOrderNumber))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Confirmação obrigatória",
+                Detail = "Informe confirmOrderNumber igual ao OrderNumber do pedido.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var outcome = await _j3ImportByAccessKey.ImportAsync(id, request, cancellationToken);
+        if (outcome.HttpStatus == StatusCodes.Status404NotFound)
+            return NotFound();
+
+        if (outcome.HttpStatus == StatusCodes.Status400BadRequest)
+        {
+            var bad = new ProblemDetails
+            {
+                Title = "Confirmação inválida",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status400BadRequest
+            };
+            bad.Extensions["reasonCode"] = outcome.ReasonCode;
+            return BadRequest(bad);
+        }
+
+        if (outcome.HttpStatus == StatusCodes.Status409Conflict)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Não foi possível importar por chave de acesso",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status409Conflict
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["result"] = outcome.Body;
+            return Conflict(problem);
+        }
+
+        if (outcome.HttpStatus == StatusCodes.Status422UnprocessableEntity)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "importOrderByAccessKey rejeitado",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status422UnprocessableEntity
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["result"] = outcome.Body;
+            return UnprocessableEntity(problem);
         }
 
         return Ok(outcome.Body);

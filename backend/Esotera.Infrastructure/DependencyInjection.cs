@@ -155,6 +155,10 @@ public static class DependencyInjection
             options.FulfillmentEnabled =
                 ParseBool(configuration["J3_FULFILLMENT_ENABLED"] ?? configuration["J3:FulfillmentEnabled"])
                 ?? options.FulfillmentEnabled;
+            options.ImportByAccessKeyEnabled =
+                ParseBool(configuration["J3_IMPORT_BY_ACCESS_KEY_ENABLED"]
+                    ?? configuration["J3:ImportByAccessKeyEnabled"])
+                ?? options.ImportByAccessKeyEnabled;
             options.GraphQlUrl = FirstNonEmpty(
                 configuration["J3_GRAPHQL_URL"],
                 configuration["J3:GraphQlUrl"],
@@ -179,6 +183,10 @@ public static class DependencyInjection
                 configuration["J3_ORIGIN_ZIP"],
                 configuration["J3:OriginZip"],
                 options.OriginZip);
+            options.EmitterPhone = FirstNonEmpty(
+                configuration["J3_EMITTER_PHONE"],
+                configuration["J3:EmitterPhone"],
+                options.EmitterPhone);
             options.Ecommerce = FirstNonEmpty(
                 configuration["J3_ECOMMERCE"],
                 configuration["J3:Ecommerce"],
@@ -274,6 +282,7 @@ public static class DependencyInjection
         services.AddScoped<IJ3FulfillmentProcessor, J3FulfillmentProcessor>();
         services.AddScoped<IJ3FulfillmentAdminQueryService, J3FulfillmentAdminQueryService>();
         services.AddScoped<IJ3FulfillmentAdminProcessService, J3FulfillmentAdminProcessService>();
+        services.AddScoped<IJ3ImportOrderByAccessKeyAdminService, J3ImportOrderByAccessKeyAdminService>();
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
@@ -296,6 +305,9 @@ public static class DependencyInjection
             services.AddSingleton<IJ3Client>(sp => sp.GetRequiredService<FakeJ3Client>());
             services.AddSingleton<FakeJ3FulfillmentClient>();
             services.AddSingleton<IJ3FulfillmentClient>(sp => sp.GetRequiredService<FakeJ3FulfillmentClient>());
+            services.AddSingleton<FakeJ3ImportOrderByAccessKeyClient>();
+            services.AddSingleton<IJ3ImportOrderByAccessKeyClient>(sp =>
+                sp.GetRequiredService<FakeJ3ImportOrderByAccessKeyClient>());
         }
         else
         {
@@ -347,6 +359,20 @@ public static class DependencyInjection
             // Mutation client: HttpClient separado (sem retry/Polly). Nenhum caller de produção neste passo.
             // AllowAutoRedirect=false: POST não deve seguir redirect (segunda request).
             services.AddHttpClient<IJ3FulfillmentClient, J3FulfillmentHttpClient>((sp, client) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;
+                var seconds = opts.TimeoutSeconds > 0
+                    ? Math.Clamp(opts.TimeoutSeconds, 3, 60)
+                    : 15;
+                client.Timeout = TimeSpan.FromSeconds(seconds);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false
+            });
+
+            // importOrderByAccessKey — cliente separado; sem fallback para createTmsOrders.
+            services.AddHttpClient<IJ3ImportOrderByAccessKeyClient, J3ImportOrderByAccessKeyHttpClient>((sp, client) =>
             {
                 var opts = sp.GetRequiredService<IOptions<J3ShippingOptions>>().Value;
                 var seconds = opts.TimeoutSeconds > 0

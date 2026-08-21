@@ -63,18 +63,26 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     /// <summary>Seller information ID fake de teste. Null = omitir.</summary>
     protected virtual string? J3SellerInformationIdForTests => null;
 
+    /// <summary>Recovery importOrderByAccessKey. Default false.</summary>
+    protected virtual bool J3ImportByAccessKeyEnabledForTests => false;
+
+    /// <summary>Telefone emitente fallback. Null = omitir.</summary>
+    protected virtual string? J3EmitterPhoneForTests => null;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
 
         var j3Enabled = J3EnabledForTests;
         var j3FulfillmentEnabled = J3FulfillmentEnabledForTests;
+        var j3ImportByAccessKey = J3ImportByAccessKeyEnabledForTests;
         var j3PriceCents = J3StandardPriceCentsForTests;
         var j3Url = J3GraphQlUrlForTests;
         var j3Token = J3TokenForTests;
         var j3Group = J3CompanyGroupCodeForTests;
         var j3SellerId = J3SellerIdForTests;
         var j3SellerInfo = J3SellerInformationIdForTests;
+        var j3EmitterPhone = J3EmitterPhoneForTests;
         builder.ConfigureAppConfiguration((_, config) =>
         {
             var values = new Dictionary<string, string?>
@@ -101,7 +109,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 ["J3_ENABLED"] = j3Enabled ? "true" : "false",
                 ["J3:Enabled"] = j3Enabled ? "true" : "false",
                 ["J3_FULFILLMENT_ENABLED"] = j3FulfillmentEnabled ? "true" : "false",
-                ["J3:FulfillmentEnabled"] = j3FulfillmentEnabled ? "true" : "false"
+                ["J3:FulfillmentEnabled"] = j3FulfillmentEnabled ? "true" : "false",
+                ["J3_IMPORT_BY_ACCESS_KEY_ENABLED"] = j3ImportByAccessKey ? "true" : "false",
+                ["J3:ImportByAccessKeyEnabled"] = j3ImportByAccessKey ? "true" : "false"
             };
 
             if (j3PriceCents.HasValue)
@@ -139,6 +149,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             {
                 values["J3_SELLER_INFORMATION_ID"] = j3SellerInfo;
                 values["J3:SellerInformationId"] = j3SellerInfo;
+            }
+
+            if (j3EmitterPhone is not null)
+            {
+                values["J3_EMITTER_PHONE"] = j3EmitterPhone;
+                values["J3:EmitterPhone"] = j3EmitterPhone;
             }
 
             config.AddInMemoryCollection(values);
@@ -242,6 +258,30 @@ public class J3FulfillmentEnabledWebApplicationFactory : CustomWebApplicationFac
     protected override bool J3FulfillmentEnabledForTests => true;
     protected override string? J3SellerIdForTests => "test-seller-id";
     protected override string? J3SellerInformationIdForTests => "test-seller-info";
+}
+
+/// <summary>
+/// Recovery importOrderByAccessKey: import ON, fulfillment OFF, seller + emitter phone.
+/// </summary>
+public sealed class J3ImportByAccessKeyRecoveryWebApplicationFactory : CustomWebApplicationFactory
+{
+    protected override bool J3EnabledForTests => true;
+    protected override bool J3FulfillmentEnabledForTests => false;
+    protected override bool J3ImportByAccessKeyEnabledForTests => true;
+    protected override string? J3SellerIdForTests => "test-seller-id";
+    protected override string? J3SellerInformationIdForTests => "test-seller-info";
+    protected override string? J3EmitterPhoneForTests => "1122973518";
+}
+
+/// <summary>Import recovery com fulfillment ON — deve bloquear.</summary>
+public sealed class J3ImportBlockedByFulfillmentWebApplicationFactory : CustomWebApplicationFactory
+{
+    protected override bool J3EnabledForTests => true;
+    protected override bool J3FulfillmentEnabledForTests => true;
+    protected override bool J3ImportByAccessKeyEnabledForTests => true;
+    protected override string? J3SellerIdForTests => "test-seller-id";
+    protected override string? J3SellerInformationIdForTests => "test-seller-info";
+    protected override string? J3EmitterPhoneForTests => "1122973518";
 }
 
 /// <summary>SQLite relacional; J3 quote on; fulfillment flag false (Pending não depende da flag).</summary>

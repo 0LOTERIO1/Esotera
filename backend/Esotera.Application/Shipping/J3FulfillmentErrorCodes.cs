@@ -14,10 +14,14 @@ public static class J3FulfillmentErrorCodes
     public const string TimeoutUnknown = "TIMEOUT_UNKNOWN";
     public const string GraphqlValidation = "GRAPHQL_VALIDATION";
     public const string GraphqlAmbiguous = "GRAPHQL_AMBIGUOUS";
+    public const string GraphqlUnauthenticated = "GRAPHQL_UNAUTHENTICATED";
+    public const string GraphqlForbidden = "GRAPHQL_FORBIDDEN";
     public const string Configuration = "CONFIGURATION";
     public const string Unknown = "UNKNOWN";
     public const string J3Disabled = "J3_DISABLED";
     public const string FulfillmentDisabled = "FULFILLMENT_DISABLED";
+    public const string ImportByAccessKeyDisabled = "IMPORT_BY_ACCESS_KEY_DISABLED";
+    public const string FulfillmentMustBeDisabled = "FULFILLMENT_MUST_BE_DISABLED";
     public const string MissingSellerId = "MISSING_SELLER_ID";
     public const string MissingSellerInformationId = "MISSING_SELLER_INFORMATION_ID";
     public const string ResidentialRequired = "RESIDENTIAL_REQUIRED";

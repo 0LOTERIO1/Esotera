@@ -88,15 +88,31 @@ public class FiscalInvoiceImportTests : IClassFixture<CustomWebApplicationFactor
                   </ide>
                   <emit>
                     <CNPJ>{SyntheticIssuerCnpj}</CNPJ>
+                    <xNome>Emitente Fixture Sintetico LTDA</xNome>
+                    <xFant>Emitente Fantasia</xFant>
+                    <enderEmit>
+                      <xLgr>Rua Emitente</xLgr>
+                      <nro>100</nro>
+                      <xCpl>Sala 1</xCpl>
+                      <CEP>01310100</CEP>
+                      <fone>1133334444</fone>
+                    </enderEmit>
                     <CRT>1</CRT>
                   </emit>
                   <dest>
                     <CPF>{cpf}</CPF>
                     <xNome>Destinatario Fixture Sintetico</xNome>
+                    <enderDest>
+                      <xLgr>Rua Destinatario</xLgr>
+                      <nro>200</nro>
+                      <CEP>03065000</CEP>
+                      <fone>11988887777</fone>
+                    </enderDest>
                   </dest>
                   <det nItem="1">
                     <prod>
                       <cProd>{cProd}</cProd>
+                      <xProd>Produto Fixture Sintetico</xProd>
                       <NCM>49019900</NCM>
                       <CFOP>5102</CFOP>
                       <uCom>UN</uCom>

@@ -71,6 +71,7 @@ public record AdminOrderDetailDto(
     AdminOrderAddressDto Address,
     AdminOrderItemDto[] Items,
     AdminOrderStatusHistoryDto[] StatusHistory,
+    AdminOrderFiscalSummaryDto Fiscal,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     long RowVersion
@@ -112,6 +113,7 @@ public record AdminOrderItemDto(
     decimal UnitPrice,
     int Quantity,
     string? Variation,
+    string? Sku,
     string? ImageUrl,
     decimal LineTotal
 );

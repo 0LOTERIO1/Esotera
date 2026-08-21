@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Esotera.Application.DTOs.Orders;
+using Esotera.Application.Options;
 using Esotera.Domain.Entities;
 using Esotera.Domain.Enums;
 using Esotera.Infrastructure.Persistence;
@@ -14,6 +15,7 @@ using Esotera.Infrastructure.Services;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Esotera.Tests;
 
@@ -341,6 +343,167 @@ public class UpSellerExportTests : IClassFixture<CustomWebApplicationFactory>
         e4.Should().NotBe("NÃO");
         e4.Should().NotBe("NAO");
         e4.Should().NotBe("false");
+        UpSellerXlsxReader.CellExists(sheet, "H4").Should().BeFalse();
+        UpSellerXlsxReader.CellExists(sheet, "I4").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task InvoiceRequired_Sim_WithCpf_FillsTaxTypeAndNumber()
+    {
+        await using var db = CreateInMemoryDb();
+        var orderId = await SeedOrderForDirectExportAsync(
+            db,
+            orderNumber: "TESTE-NFE-SIM-CPF",
+            customerCpf: "529.982.247-25");
+
+        var svc = new UpSellerOrderExportService(db, Options.Create(new UpSellerOptions
+        {
+            InvoiceRequired = "Sim",
+            StoreName = "Loja Padrão",
+            WarehouseName = "My Warehouse",
+            ShippingCostMethod = "2",
+            PackageQuantity = 1
+        }));
+
+        var file = await svc.ExportOrderAsync(orderId);
+        var template = UpSellerOrderExportService.ReadEmbeddedTemplateBytes();
+        var changed = UpSellerOrderExportService.DiffChangedEntries(template, file.Content);
+        changed.Should().OnlyContain(e => UpSellerOrderExportService.IsAllowedChangedEntry(e));
+        UpSellerOrderExportService.TryReadIcv(file.Content)
+            .Should().Be(UpSellerOrderExportService.ExpectedIcvValue);
+
+        var sheet = UpSellerXlsxReader.ReadSheetXml(file.Content);
+        var shared = UpSellerXlsxReader.ReadSharedStrings(file.Content);
+        UpSellerXlsxReader.GetCellText(sheet, shared, "E4").Should().Be("Sim");
+        UpSellerXlsxReader.GetCellText(sheet, shared, "H4").Should().Be("CPF");
+        UpSellerXlsxReader.GetCellText(sheet, shared, "I4").Should().Be("52998224725");
+        UpSellerXlsxReader.CellExists(sheet, "J4").Should().BeFalse();
+        UpSellerXlsxReader.CellExists(sheet, "K4").Should().BeFalse();
+        UpSellerXlsxReader.GetCellText(sheet, shared, "F4").Should().Be("Cliente Homolog NFe");
+        UpSellerXlsxReader.GetCellText(sheet, shared, "L4").Should().Be("01310-100");
+        UpSellerXlsxReader.GetCellText(sheet, shared, "M4").Should().Be("São Paulo");
+        UpSellerXlsxReader.GetCellText(sheet, shared, "N4").Should().Be("São Paulo");
+        UpSellerXlsxReader.GetCellText(sheet, shared, "O4").Should().Be("Bela Vista");
+    }
+
+    [Fact]
+    public async Task InvoiceRequired_Sim_WithoutCpf_FailsExplicitly()
+    {
+        await using var db = CreateInMemoryDb();
+        var orderId = await SeedOrderForDirectExportAsync(
+            db,
+            orderNumber: "TESTE-NFE-SIM-NOCPF",
+            customerCpf: null);
+
+        var svc = new UpSellerOrderExportService(db, Options.Create(new UpSellerOptions
+        {
+            InvoiceRequired = "Sim"
+        }));
+
+        var act = () => svc.ExportOrderAsync(orderId);
+        var ex = await act.Should().ThrowAsync<Application.Exceptions.ValidationException>();
+        ex.Which.Errors.Should().ContainKey("customerCpf");
+    }
+
+    [Fact]
+    public async Task InvoiceRequired_Nao_LeavesTaxColumnsEmpty()
+    {
+        await using var db = CreateInMemoryDb();
+        var orderId = await SeedOrderForDirectExportAsync(
+            db,
+            orderNumber: "TESTE-NFE-NAO",
+            customerCpf: "52998224725");
+
+        var svc = new UpSellerOrderExportService(db, Options.Create(new UpSellerOptions
+        {
+            InvoiceRequired = "Não"
+        }));
+
+        var file = await svc.ExportOrderAsync(orderId);
+        var template = UpSellerOrderExportService.ReadEmbeddedTemplateBytes();
+        UpSellerOrderExportService.DiffChangedEntries(template, file.Content)
+            .Should().OnlyContain(e => UpSellerOrderExportService.IsAllowedChangedEntry(e));
+
+        var sheet = UpSellerXlsxReader.ReadSheetXml(file.Content);
+        var shared = UpSellerXlsxReader.ReadSharedStrings(file.Content);
+        UpSellerXlsxReader.GetCellText(sheet, shared, "E4").Should().Be("Não");
+        UpSellerXlsxReader.CellExists(sheet, "H4").Should().BeFalse();
+        UpSellerXlsxReader.CellExists(sheet, "I4").Should().BeFalse();
+        UpSellerXlsxReader.CellExists(sheet, "J4").Should().BeFalse();
+        UpSellerXlsxReader.CellExists(sheet, "K4").Should().BeFalse();
+    }
+
+    private static EsoteraDbContext CreateInMemoryDb()
+    {
+        var opts = new DbContextOptionsBuilder<EsoteraDbContext>()
+            .UseInMemoryDatabase("upseller-nfe-" + Guid.NewGuid().ToString("N"))
+            .Options;
+        return new EsoteraDbContext(opts);
+    }
+
+    private static async Task<Guid> SeedOrderForDirectExportAsync(
+        EsoteraDbContext db,
+        string orderNumber,
+        string? customerCpf)
+    {
+        var userId = Guid.NewGuid();
+        db.Users.Add(new User
+        {
+            Id = userId,
+            Name = "Cliente Homolog NFe",
+            Email = $"{orderNumber.ToLowerInvariant()}@local.invalid",
+            PasswordHash = "x",
+            Role = UserRole.Customer,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        var orderId = Guid.NewGuid();
+        const decimal unit = 54.90m;
+        var now = DateTime.UtcNow;
+        db.Orders.Add(new Order
+        {
+            Id = orderId,
+            OrderNumber = orderNumber,
+            UserId = userId,
+            Status = OrderStatus.PaymentApproved,
+            Subtotal = unit,
+            Discount = 0m,
+            ShippingPrice = 0m,
+            Total = unit,
+            ShippingMethodId = "manual",
+            ShippingMethodName = "Manual",
+            ShippingProvider = string.Empty,
+            ShipCep = "01310100",
+            ShipStreet = "Av Paulista",
+            ShipNumber = "1000",
+            ShipNeighborhood = "Bela Vista",
+            ShipCity = "São Paulo",
+            ShipState = "SP",
+            PaymentMethod = "pix",
+            PaymentStatus = "approved",
+            CustomerName = "Cliente Homolog NFe",
+            CustomerEmail = $"{orderNumber.ToLowerInvariant()}@local.invalid",
+            CustomerPhone = "11987654321",
+            CustomerCpf = customerCpf,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            Items =
+            [
+                new OrderItem
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = orderId,
+                    ProductName = "Rider Waite Tarô",
+                    Variation = "Somente Tarô",
+                    Sku = "SKU-WAITE-TAROT",
+                    UnitPrice = unit,
+                    Quantity = 1,
+                    LineTotal = unit
+                }
+            ]
+        });
+        await db.SaveChangesAsync();
+        return orderId;
     }
 
     [Fact]

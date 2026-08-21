@@ -35,6 +35,7 @@ export default function AdminOrdersPage() {
   const [pendingStatus, setPendingStatus] = useState<OrderStatus | null>(null);
   const [updating, setUpdating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importingFiscal, setImportingFiscal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,6 +140,31 @@ export default function AdminOrdersPage() {
       );
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function importFiscalXml(file: File | null) {
+    if (!selected || !file) return;
+    setImportingFiscal(true);
+    try {
+      const result = await adminApi.importFiscalInvoiceXml(selected.id, file);
+      const refreshed = await getAdminRepository().getOrder(selected.id);
+      if (refreshed) setSelected(refreshed);
+      push(
+        "success",
+        result.idempotentReplay
+          ? "XML já importado anteriormente (idempotente)."
+          : `NF-e importada · ${result.maskedChNFe}`,
+      );
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError
+          ? err.userMessage
+          : "Não foi possível importar o XML da NF-e.",
+      );
+    } finally {
+      setImportingFiscal(false);
     }
   }
 
@@ -382,6 +408,48 @@ export default function AdminOrdersPage() {
                 {selected.address.neighborhood} · {selected.address.city}/
                 {selected.address.state} · CEP {selected.address.cep}
               </p>
+            </div>
+
+            <div className="mt-4 rounded border border-esotera-border/70 p-3 text-sm">
+              <h3 className="text-esotera-text">NF-e</h3>
+              <p className="mt-1 text-esotera-muted">
+                Status:{" "}
+                {selected.fiscal.fiscalStatus === "authorized"
+                  ? "Autorizado"
+                  : "Sem XML"}
+              </p>
+              {selected.fiscal.maskedChNFe ? (
+                <p className="mt-1 font-mono text-xs text-esotera-muted">
+                  chNFe: {selected.fiscal.maskedChNFe}
+                </p>
+              ) : null}
+              {selected.fiscal.invoiceNumber || selected.fiscal.invoiceSeries ? (
+                <p className="mt-1 text-esotera-muted">
+                  Nº {selected.fiscal.invoiceNumber ?? "—"} · Série{" "}
+                  {selected.fiscal.invoiceSeries ?? "—"}
+                </p>
+              ) : null}
+              <div className="mt-3">
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <span className="sr-only">Importar XML da NF-e</span>
+                  <input
+                    type="file"
+                    accept=".xml,application/xml,text/xml"
+                    className="text-xs"
+                    disabled={importingFiscal}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      e.target.value = "";
+                      void importFiscalXml(f);
+                    }}
+                  />
+                </label>
+                <p className="mt-1 text-xs text-esotera-muted">
+                  {importingFiscal
+                    ? "Importando…"
+                    : "Importar XML da NF-e (.xml)"}
+                </p>
+              </div>
             </div>
 
             {selected.statusHistory.length ? (

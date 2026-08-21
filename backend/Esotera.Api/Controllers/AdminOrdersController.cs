@@ -1,7 +1,9 @@
 using Esotera.Application.DTOs.Admin;
 using Esotera.Application.DTOs.Common;
+using Esotera.Application.DTOs.Fiscal;
 using Esotera.Application.DTOs.Orders;
 using Esotera.Application.Interfaces;
+using Esotera.Infrastructure.Services;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +18,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IAdminQueryService _adminQueries;
     private readonly IOrderService _orderService;
     private readonly IUpSellerOrderExportService _upSellerExport;
+    private readonly IFiscalInvoiceImportService _fiscalImport;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -23,12 +26,14 @@ public class AdminOrdersController : ControllerBase
         IAdminQueryService adminQueries,
         IOrderService orderService,
         IUpSellerOrderExportService upSellerExport,
+        IFiscalInvoiceImportService fiscalImport,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
         _adminQueries = adminQueries;
         _orderService = orderService;
         _upSellerExport = upSellerExport;
+        _fiscalImport = fiscalImport;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -59,6 +64,38 @@ public class AdminOrdersController : ControllerBase
     {
         var file = await _upSellerExport.ExportOrderAsync(id, cancellationToken);
         return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// Importa XML de NF-e (emitida no UpSeller). Sem SEFAZ/J3/HTTP externo.
+    /// Resposta sem XML bruto.
+    /// </summary>
+    [HttpPost("{id:guid}/fiscal-invoices/xml")]
+    [RequestSizeLimit(FiscalInvoiceImportService.MaxUploadBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = FiscalInvoiceImportService.MaxUploadBytes)]
+    public async Task<ActionResult<FiscalInvoiceImportResultDto>> ImportFiscalXml(
+        Guid id,
+        IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Arquivo obrigatório",
+                Detail = "Envie o XML da NF-e no campo file.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        await using var stream = file.OpenReadStream();
+        var result = await _fiscalImport.ImportXmlAsync(
+            id,
+            stream,
+            file.FileName,
+            file.ContentType,
+            cancellationToken);
+        return Ok(result);
     }
 
     [HttpPatch("{id:guid}/status")]

@@ -90,6 +90,7 @@ export type AdminOrderDetail = {
     price: number;
     quantity: number;
     variation?: string;
+    sku?: string;
     image: string;
     lineTotal: number;
   }[];
@@ -99,6 +100,13 @@ export type AdminOrderDetail = {
     note?: string;
     createdAt: string;
   }[];
+  fiscal: {
+    fiscalStatus: string;
+    maskedChNFe?: string;
+    invoiceNumber?: string;
+    invoiceSeries?: string;
+    authorizedAtUtc?: string;
+  };
   createdAt: string;
   updatedAt: string;
   rowVersion: number;

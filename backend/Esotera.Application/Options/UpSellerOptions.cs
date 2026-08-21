@@ -16,7 +16,10 @@ public sealed class UpSellerOptions
 
     public int PackageQuantity { get; set; } = 1;
 
-    /// <summary>Valor exato da lista suspensa UpSeller: "Não" ou "Sim". Nesta fase: Não.</summary>
+    /// <summary>
+    /// Valor exato da lista suspensa UpSeller: "Não" ou "Sim".
+    /// Com "Sim", o exportador exige CPF (11 dígitos) e preenche H=CPF / I=dígitos; sem suporte CNPJ/PJ ainda.
+    /// </summary>
     public string InvoiceRequired { get; set; } = "Não";
 
     /// <summary>Fallback quando PaymentMethodMap não cobre o método do pedido.</summary>

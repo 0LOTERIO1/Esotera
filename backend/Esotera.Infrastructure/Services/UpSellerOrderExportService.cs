@@ -113,7 +113,29 @@ public sealed class UpSellerOrderExportService : IUpSellerOrderExportService
                 $"Método de custo de envio UpSeller inválido: '{_options.ShippingCostMethod}'.");
         }
 
-        var bytes = BuildWorkbook(order, items, stateFull, shippingCostMethod);
+        var invoiceRequired = NormalizeInvoiceRequired(_options.InvoiceRequired);
+        string? recipientCpfDigits = null;
+        if (invoiceRequired == "Sim")
+        {
+            // Pessoa física: H/I exigem Tipo=CPF + número. Sem modelagem PJ/CNPJ ainda —
+            // falhar explicitamente em vez de inventar dados fiscais.
+            recipientCpfDigits = TryNormalizeCpf(order.CustomerCpf);
+            if (recipientCpfDigits is null)
+            {
+                throw new ValidationException(
+                    "customerCpf",
+                    "Necessita Emitir NF-e = Sim exige CPF válido (11 dígitos) no pedido. " +
+                    "Exportação com CNPJ/pessoa jurídica ainda não é suportada.");
+            }
+        }
+
+        var bytes = BuildWorkbook(
+            order,
+            items,
+            stateFull,
+            shippingCostMethod,
+            invoiceRequired,
+            recipientCpfDigits);
         var safeNumber = string.Join("_", order.OrderNumber.Split(Path.GetInvalidFileNameChars()));
         return new UpSellerExportFile(
             bytes,
@@ -125,7 +147,9 @@ public sealed class UpSellerOrderExportService : IUpSellerOrderExportService
         Order order,
         IReadOnlyList<OrderItem> items,
         string stateFullName,
-        int shippingCostMethod)
+        int shippingCostMethod,
+        string invoiceRequired,
+        string? recipientCpfDigits)
     {
         var templateBytes = ReadEmbeddedTemplateBytes();
         using var input = new MemoryStream(templateBytes);
@@ -156,6 +180,7 @@ public sealed class UpSellerOrderExportService : IUpSellerOrderExportService
             var note = string.IsNullOrWhiteSpace(order.CouponCode)
                 ? null
                 : $"Cupom {order.CouponCode.Trim()}";
+            var nfeSim = invoiceRequired == "Sim";
 
             for (var i = 0; i < items.Count; i++)
             {
@@ -169,11 +194,27 @@ public sealed class UpSellerOrderExportService : IUpSellerOrderExportService
                     patcher.RemoveCell(Col("D", row));
                 else
                     patcher.SetSharedString(Col("D", row), note);
-                patcher.SetSharedString(Col("E", row), NormalizeInvoiceRequired(_options.InvoiceRequired));
+                patcher.SetSharedString(Col("E", row), invoiceRequired);
                 patcher.SetSharedString(Col("F", row), order.CustomerName);
 
                 if (!string.IsNullOrWhiteSpace(order.CustomerPhone))
                     patcher.SetSharedString(Col("G", row), order.CustomerPhone.Trim());
+
+                if (nfeSim)
+                {
+                    // Template: H=Tipo de Tributação, I=Número (CPF). PF → sem Empresa/IE.
+                    patcher.SetSharedString(Col("H", row), "CPF");
+                    patcher.SetSharedString(Col("I", row), recipientCpfDigits!);
+                    patcher.RemoveCell(Col("J", row));
+                    patcher.RemoveCell(Col("K", row));
+                }
+                else
+                {
+                    patcher.RemoveCell(Col("H", row));
+                    patcher.RemoveCell(Col("I", row));
+                    patcher.RemoveCell(Col("J", row));
+                    patcher.RemoveCell(Col("K", row));
+                }
 
                 patcher.SetSharedString(Col("L", row), cep);
                 patcher.SetSharedString(Col("M", row), stateFullName);
@@ -248,6 +289,18 @@ public sealed class UpSellerOrderExportService : IUpSellerOrderExportService
             return "Sim";
         // Qualquer outra variação (NÃO, NAO, false, etc.) → Não nesta fase.
         return "Não";
+    }
+
+    /// <summary>
+    /// CPF com exatamente 11 dígitos (aceita máscara). Null se vazio/inválido.
+    /// Sem validação de dígitos verificadores além do comprimento (alinhado ao cadastro).
+    /// </summary>
+    internal static string? TryNormalizeCpf(string? cpf)
+    {
+        if (string.IsNullOrWhiteSpace(cpf))
+            return null;
+        var digits = new string(cpf.Where(char.IsDigit).ToArray());
+        return digits.Length == 11 ? digits : null;
     }
 
     private static void SetStreetNumber(OpenXmlOrderSheetPatcher patcher, string address, string? number)

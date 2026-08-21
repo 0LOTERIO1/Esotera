@@ -367,6 +367,8 @@ public static class DependencyInjection
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IAdminQueryService, AdminQueryService>();
         services.AddScoped<IUpSellerOrderExportService, UpSellerOrderExportService>();
+        services.AddSingleton<IFiscalInvoiceXmlParser, FiscalInvoiceXmlParser>();
+        services.AddScoped<IFiscalInvoiceImportService, FiscalInvoiceImportService>();
         services.AddScoped<INewsletterService, NewsletterService>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<DevSeed>();

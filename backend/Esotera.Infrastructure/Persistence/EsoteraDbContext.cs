@@ -24,6 +24,7 @@ public class EsoteraDbContext : DbContext
     public DbSet<MelhorEnvioConnection> MelhorEnvioConnections => Set<MelhorEnvioConnection>();
     public DbSet<MelhorEnvioOAuthState> MelhorEnvioOAuthStates => Set<MelhorEnvioOAuthState>();
     public DbSet<J3Fulfillment> J3Fulfillments => Set<J3Fulfillment>();
+    public DbSet<FiscalInvoice> FiscalInvoices => Set<FiscalInvoice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

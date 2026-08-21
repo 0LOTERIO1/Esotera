@@ -208,6 +208,7 @@ function mapOrderToAdminDetail(order: Order): AdminOrderDetail {
       price: item.price,
       quantity: item.quantity,
       variation: item.variation,
+      sku: undefined,
       image: normalizeProductImageUrl(item.image),
       lineTotal: item.price * item.quantity,
     })),
@@ -217,6 +218,9 @@ function mapOrderToAdminDetail(order: Order): AdminOrderDetail {
         createdAt: order.updatedAt,
       },
     ],
+    fiscal: {
+      fiscalStatus: "awaiting_xml",
+    },
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
     rowVersion: 0,

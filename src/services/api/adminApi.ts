@@ -147,6 +147,88 @@ export const adminApi = {
     return res.blob();
   },
 
+  async importFiscalInvoiceXml(
+    orderId: string,
+    file: File,
+  ): Promise<{
+    status: string;
+    maskedChNFe: string;
+    number?: string | null;
+    series?: string | null;
+    authorizedAtUtc?: string | null;
+    idempotentReplay: boolean;
+  }> {
+    const base =
+      process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+      "http://localhost:5080";
+    const { sessionService } = await import("./sessionService");
+    const { ApiError } = await import("./apiClient");
+    const token = sessionService.getToken();
+    if (!token) {
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "É necessário estar autenticado na API para esta ação.",
+      );
+    }
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(
+      `${base}/api/admin/orders/${orderId}/fiscal-invoices/xml`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      },
+    );
+    if (res.status === 401) {
+      sessionService.notifyUnauthorized();
+      throw new ApiError(
+        401,
+        "Não autorizado",
+        "Sessão expirada. Faça login novamente.",
+      );
+    }
+    if (res.status === 403) {
+      throw new ApiError(
+        403,
+        "Proibido",
+        "Você não tem permissão para esta ação.",
+      );
+    }
+    if (!res.ok) {
+      let detail: string | undefined;
+      try {
+        const payload = (await res.json()) as {
+          detail?: string;
+          errors?: Record<string, string[]>;
+          title?: string;
+        };
+        detail =
+          Object.values(payload.errors ?? {})
+            .flat()
+            .find(Boolean) ||
+          payload.detail ||
+          payload.title;
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(
+        res.status,
+        "Falha ao importar XML",
+        detail || "Não foi possível importar o XML da NF-e.",
+      );
+    }
+    return (await res.json()) as {
+      status: string;
+      maskedChNFe: string;
+      number?: string | null;
+      series?: string | null;
+      authorizedAtUtc?: string | null;
+      idempotentReplay: boolean;
+    };
+  },
+
   async listCustomers(): Promise<AdminCustomer[]> {
     const data = await apiClient.get<Parameters<typeof mapAdminCustomer>[0][]>(
       "/api/admin/customers",

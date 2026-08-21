@@ -197,6 +197,7 @@ export function mapAdminOrderDetail(api: {
     unitPrice: number;
     quantity: number;
     variation?: string | null;
+    sku?: string | null;
     imageUrl?: string | null;
     lineTotal: number;
   }[];
@@ -206,6 +207,13 @@ export function mapAdminOrderDetail(api: {
     note?: string | null;
     createdAt: string;
   }[];
+  fiscal: {
+    fiscalStatus: string;
+    maskedChNFe?: string | null;
+    invoiceNumber?: string | null;
+    invoiceSeries?: string | null;
+    authorizedAtUtc?: string | null;
+  };
   createdAt: string;
   updatedAt: string;
   rowVersion: number;
@@ -251,6 +259,7 @@ export function mapAdminOrderDetail(api: {
       price: item.unitPrice,
       quantity: item.quantity,
       variation: item.variation ?? undefined,
+      sku: item.sku ?? undefined,
       image: normalizeProductImageUrl(item.imageUrl),
       lineTotal: item.lineTotal,
     })),
@@ -260,6 +269,13 @@ export function mapAdminOrderDetail(api: {
       note: h.note ?? undefined,
       createdAt: h.createdAt,
     })),
+    fiscal: {
+      fiscalStatus: api.fiscal?.fiscalStatus ?? "awaiting_xml",
+      maskedChNFe: api.fiscal?.maskedChNFe ?? undefined,
+      invoiceNumber: api.fiscal?.invoiceNumber ?? undefined,
+      invoiceSeries: api.fiscal?.invoiceSeries ?? undefined,
+      authorizedAtUtc: api.fiscal?.authorizedAtUtc ?? undefined,
+    },
     createdAt: api.createdAt,
     updatedAt: api.updatedAt,
     rowVersion: api.rowVersion,

@@ -129,7 +129,17 @@ public class AdminQueryService : IAdminQueryService
             .Include(o => o.StatusHistory)
             .FirstOrDefaultAsync(o => o.Id == orderId);
 
-        return order == null ? null : MapDetail(order);
+        if (order == null)
+            return null;
+
+        var fiscal = await _context.FiscalInvoices
+            .AsNoTracking()
+            .Where(f => f.OrderId == orderId)
+            .OrderByDescending(f => f.Status == Domain.Enums.FiscalInvoiceStatus.Authorized)
+            .ThenByDescending(f => f.CreatedAtUtc)
+            .FirstOrDefaultAsync();
+
+        return MapDetail(order, fiscal);
     }
 
     public async Task<IReadOnlyList<AdminSoldProductDto>> GetSoldProductsAsync()
@@ -199,7 +209,26 @@ public class AdminQueryService : IAdminQueryService
             .ToList();
     }
 
-    private static AdminOrderDetailDto MapDetail(Domain.Entities.Order order) => new(
+    private static AdminOrderDetailDto MapDetail(
+        Domain.Entities.Order order,
+        Domain.Entities.FiscalInvoice? fiscal)
+    {
+        AdminOrderFiscalSummaryDto fiscalDto;
+        if (fiscal is null)
+        {
+            fiscalDto = new AdminOrderFiscalSummaryDto("awaiting_xml", null, null, null, null);
+        }
+        else
+        {
+            fiscalDto = new AdminOrderFiscalSummaryDto(
+                fiscal.Status,
+                FiscalInvoiceImportService.MaskChNFe(fiscal.ChNFe),
+                fiscal.Number,
+                fiscal.Series,
+                fiscal.AuthorizedAtUtc);
+        }
+
+        return new(
         order.Id,
         order.OrderNumber,
         order.Status,
@@ -240,6 +269,7 @@ public class AdminQueryService : IAdminQueryService
             i.UnitPrice,
             i.Quantity,
             i.Variation,
+            i.Sku,
             i.ImageUrl,
             i.LineTotal
         )).ToArray(),
@@ -249,8 +279,10 @@ public class AdminQueryService : IAdminQueryService
             h.Note,
             h.CreatedAtUtc
         )).ToArray(),
+        fiscalDto,
         order.CreatedAtUtc,
         order.UpdatedAtUtc,
         order.RowVersion
     );
+    }
 }

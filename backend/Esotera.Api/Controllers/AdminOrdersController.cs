@@ -24,6 +24,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IJ3ImportOrderByAccessKeyAdminService _j3ImportByAccessKey;
     private readonly IJ3ReconcileAdminService _j3Reconcile;
     private readonly IJ3TrackingSyncService _j3TrackingSync;
+    private readonly IJ3IdentifierHydrationService _j3IdentifierHydration;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -36,6 +37,7 @@ public class AdminOrdersController : ControllerBase
         IJ3ImportOrderByAccessKeyAdminService j3ImportByAccessKey,
         IJ3ReconcileAdminService j3Reconcile,
         IJ3TrackingSyncService j3TrackingSync,
+        IJ3IdentifierHydrationService j3IdentifierHydration,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
@@ -47,6 +49,7 @@ public class AdminOrdersController : ControllerBase
         _j3ImportByAccessKey = j3ImportByAccessKey;
         _j3Reconcile = j3Reconcile;
         _j3TrackingSync = j3TrackingSync;
+        _j3IdentifierHydration = j3IdentifierHydration;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -296,6 +299,50 @@ public class AdminOrdersController : ControllerBase
             var problem = new ProblemDetails
             {
                 Title = "Falha ao sincronizar status J3",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status422UnprocessableEntity
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["result"] = outcome.Body;
+            return UnprocessableEntity(problem);
+        }
+
+        return Ok(outcome.Body);
+    }
+
+    /// <summary>
+    /// Hidratação manual de J3OrderCode/J3TrackingNumber via getOrderDetails (read-only).
+    /// Não altera J3Fulfillment.Status. Zero createTmsOrders / importOrderByAccessKey.
+    /// </summary>
+    [HttpPost("{id:guid}/j3-identifiers/hydrate")]
+    public async Task<ActionResult<J3IdentifierHydrationResultDto>> HydrateJ3Identifiers(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await _j3IdentifierHydration.HydrateAsync(id, cancellationToken);
+        if (outcome.HttpStatus == StatusCodes.Status404NotFound)
+            return NotFound();
+
+        if (outcome.HttpStatus == StatusCodes.Status409Conflict)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Hidratação J3 identifiers não elegível",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status409Conflict
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["result"] = outcome.Body;
+            return Conflict(problem);
+        }
+
+        if (outcome.HttpStatus == StatusCodes.Status422UnprocessableEntity)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Falha ao hidratar identificadores J3",
                 Detail = outcome.Message,
                 Status = StatusCodes.Status422UnprocessableEntity
             };

@@ -102,7 +102,11 @@ public sealed class J3FulfillmentAdminQueryService : IJ3FulfillmentAdminQuerySer
             f.CompletedAtUtc,
             J3FulfillmentAdminFlags.CanRetrySafely(f.Status),
             J3FulfillmentAdminFlags.NeedsManualReview(f.Status, stuck),
-            stuck);
+            stuck,
+            f.J3RemoteStatus,
+            f.J3LastStatusSyncAtUtc,
+            f.J3LastStatusSyncErrorCode,
+            f.J3LastStatusSyncErrorAtUtc);
     }
 
     private J3FulfillmentAdminDetailDto MapDetail(
@@ -133,6 +137,10 @@ public sealed class J3FulfillmentAdminQueryService : IJ3FulfillmentAdminQuerySer
             J3FulfillmentAdminFlags.NeedsManualReview(f.Status, stuck),
             stuck,
             eligibility.IsEligible,
-            eligibility.ReasonCode);
+            eligibility.ReasonCode,
+            f.J3RemoteStatus,
+            f.J3LastStatusSyncAtUtc,
+            f.J3LastStatusSyncErrorCode,
+            f.J3LastStatusSyncErrorAtUtc);
     }
 }

@@ -25,7 +25,11 @@ public sealed record J3FulfillmentAdminListItemDto(
     DateTime? CompletedAtUtc,
     bool CanRetrySafely,
     bool NeedsManualReview,
-    bool IsPossiblyStuck);
+    bool IsPossiblyStuck,
+    string? J3RemoteStatus,
+    DateTime? J3LastStatusSyncAtUtc,
+    string? J3LastStatusSyncErrorCode,
+    DateTime? J3LastStatusSyncErrorAtUtc);
 
 /// <summary>Detalhe admin diagnóstico. Sem endereço, telefone, e-mail, token, ChNFe completa ou raw error.</summary>
 public sealed record J3FulfillmentAdminDetailDto(
@@ -50,4 +54,8 @@ public sealed record J3FulfillmentAdminDetailDto(
     bool NeedsManualReview,
     bool IsPossiblyStuck,
     bool CanSendToJ3,
-    string EligibilityReason);
+    string EligibilityReason,
+    string? J3RemoteStatus,
+    DateTime? J3LastStatusSyncAtUtc,
+    string? J3LastStatusSyncErrorCode,
+    DateTime? J3LastStatusSyncErrorAtUtc);

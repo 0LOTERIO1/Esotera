@@ -33,6 +33,13 @@ public class J3FulfillmentConfiguration : IEntityTypeConfiguration<J3Fulfillment
         builder.Property(x => x.LastErrorCode)
             .HasMaxLength(64);
 
+        // Status logístico RAW — tamanho alinhado a códigos J3 (não é o Status de integração).
+        builder.Property(x => x.J3RemoteStatus)
+            .HasMaxLength(64);
+
+        builder.Property(x => x.J3LastStatusSyncErrorCode)
+            .HasMaxLength(64);
+
         // 1:1 Order — UNIQUE
         builder.HasIndex(x => x.OrderId)
             .IsUnique();

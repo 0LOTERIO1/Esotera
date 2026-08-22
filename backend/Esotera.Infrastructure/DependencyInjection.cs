@@ -308,6 +308,7 @@ public static class DependencyInjection
         services.AddScoped<IJ3FulfillmentAdminProcessService, J3FulfillmentAdminProcessService>();
         services.AddScoped<IJ3ImportOrderByAccessKeyAdminService, J3ImportOrderByAccessKeyAdminService>();
         services.AddScoped<IJ3ReconcileAdminService, J3ReconcileAdminService>();
+        services.AddScoped<IJ3TrackingSyncService, J3TrackingSyncService>();
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();

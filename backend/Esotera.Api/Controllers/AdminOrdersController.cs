@@ -23,6 +23,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IJ3FulfillmentAdminProcessService _j3Process;
     private readonly IJ3ImportOrderByAccessKeyAdminService _j3ImportByAccessKey;
     private readonly IJ3ReconcileAdminService _j3Reconcile;
+    private readonly IJ3TrackingSyncService _j3TrackingSync;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -34,6 +35,7 @@ public class AdminOrdersController : ControllerBase
         IJ3FulfillmentAdminProcessService j3Process,
         IJ3ImportOrderByAccessKeyAdminService j3ImportByAccessKey,
         IJ3ReconcileAdminService j3Reconcile,
+        IJ3TrackingSyncService j3TrackingSync,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
@@ -44,6 +46,7 @@ public class AdminOrdersController : ControllerBase
         _j3Process = j3Process;
         _j3ImportByAccessKey = j3ImportByAccessKey;
         _j3Reconcile = j3Reconcile;
+        _j3TrackingSync = j3TrackingSync;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -256,6 +259,50 @@ public class AdminOrdersController : ControllerBase
             if (outcome.Body is not null)
                 problem.Extensions["result"] = outcome.Body;
             return Conflict(problem);
+        }
+
+        return Ok(outcome.Body);
+    }
+
+    /// <summary>
+    /// Sync manual de status logístico J3: searchOrderByCode (read-only) + persiste J3RemoteStatus.
+    /// Não altera J3Fulfillment.Status de integração. Zero createTmsOrders / importOrderByAccessKey.
+    /// </summary>
+    [HttpPost("{id:guid}/j3-tracking/sync")]
+    public async Task<ActionResult<J3TrackingSyncResultDto>> SyncJ3Tracking(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await _j3TrackingSync.SyncAsync(id, cancellationToken);
+        if (outcome.HttpStatus == StatusCodes.Status404NotFound)
+            return NotFound();
+
+        if (outcome.HttpStatus == StatusCodes.Status409Conflict)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Sincronização J3 tracking não elegível",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status409Conflict
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["result"] = outcome.Body;
+            return Conflict(problem);
+        }
+
+        if (outcome.HttpStatus == StatusCodes.Status422UnprocessableEntity)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Falha ao sincronizar status J3",
+                Detail = outcome.Message,
+                Status = StatusCodes.Status422UnprocessableEntity
+            };
+            problem.Extensions["reasonCode"] = outcome.ReasonCode;
+            if (outcome.Body is not null)
+                problem.Extensions["result"] = outcome.Body;
+            return UnprocessableEntity(problem);
         }
 
         return Ok(outcome.Body);

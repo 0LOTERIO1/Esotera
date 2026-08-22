@@ -3,6 +3,7 @@ using System;
 using Esotera.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Esotera.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(EsoteraDbContext))]
-    partial class EsoteraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260821234537_AddJ3FulfillmentTrackingSyncFields")]
+    partial class AddJ3FulfillmentTrackingSyncFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

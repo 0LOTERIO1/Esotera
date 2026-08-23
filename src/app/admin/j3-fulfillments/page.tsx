@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/Button";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { ApiError } from "@/services/api/apiClient";
 import {
+  j3CodesEqual,
   j3EligibilityUserMessage,
   j3FulfillmentAdminApi,
+  j3TrackingActionUserMessage,
   type J3FulfillmentAdminDetail,
   type J3FulfillmentAdminListItem,
 } from "@/services/api/j3FulfillmentAdminApi";
@@ -314,18 +316,56 @@ function J3FulfillmentDetail({
   onRefreshDetail: () => Promise<void>;
 }) {
   const [sending, setSending] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
+  const [syncingTracking, setSyncingTracking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionOk, setActionOk] = useState<string | null>(null);
+
+  const busy = sending || hydrating || syncingTracking;
+
+  const hasOrderId = Boolean(detail.j3OrderId?.trim());
+  const hasCode = Boolean(detail.j3OrderCode?.trim());
+  const hasTracking = Boolean(detail.j3TrackingNumber?.trim());
+  const sameIdentifiers = j3CodesEqual(detail.j3OrderCode, detail.j3TrackingNumber);
+  const partialConflict = (hasCode && !hasTracking) || (!hasCode && hasTracking);
+  const directConflict = hasCode && hasTracking && !sameIdentifiers;
+  const identifiersConflict = partialConflict || directConflict;
+
+  const canHydrate =
+    detail.status === "created" &&
+    hasOrderId &&
+    !hasCode &&
+    !hasTracking &&
+    !busy;
+
+  // Backend aceita sync com code + tracking null; só bloqueia divergência direta.
+  const canSyncTracking =
+    detail.status === "created" &&
+    hasCode &&
+    (!hasTracking || sameIdentifiers) &&
+    !busy;
 
   const featureDisabled = detail.eligibilityReason === "FeatureDisabled";
   const canSend =
     detail.canSendToJ3 &&
     detail.status === "pending" &&
     !detail.needsManualReview &&
-    !sending;
+    !busy;
+
+  function mapActionError(err: unknown, fallback: string): string {
+    if (err instanceof ApiError) {
+      return (
+        err.detail ||
+        j3TrackingActionUserMessage(err.reasonCode) ||
+        err.userMessage ||
+        fallback
+      );
+    }
+    return fallback;
+  }
 
   async function sendToJ3() {
-    if (sending) return;
+    if (busy) return;
     setSending(true);
     setActionError(null);
     setActionOk(null);
@@ -357,12 +397,59 @@ function J3FulfillmentDetail({
     }
   }
 
+  async function hydrateIdentifiers() {
+    if (!canHydrate) return;
+    setHydrating(true);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      const result = await j3FulfillmentAdminApi.hydrateIdentifiers(detail.orderId);
+      if (result.outcome === "AlreadyHydrated") {
+        setActionOk("Identificadores J3 já estavam atualizados.");
+      } else {
+        setActionOk("Identificadores J3 atualizados.");
+      }
+      await onRefreshDetail();
+    } catch (err) {
+      setActionError(mapActionError(err, "Não foi possível buscar identificadores J3."));
+      try {
+        await onRefreshDetail();
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setHydrating(false);
+    }
+  }
+
+  async function syncTracking() {
+    if (!canSyncTracking) return;
+    setSyncingTracking(true);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      await j3FulfillmentAdminApi.syncTracking(detail.orderId);
+      setActionOk("Status J3 atualizado.");
+      await onRefreshDetail();
+    } catch (err) {
+      setActionError(mapActionError(err, "Não foi possível atualizar o status J3."));
+      try {
+        await onRefreshDetail();
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setSyncingTracking(false);
+    }
+  }
+
   return (
     <div className="space-y-4 text-sm">
       <div>
         <h2 className="font-serif text-xl text-esotera-secondary">
           {detail.orderNumber}
         </h2>
+        <p className="mt-1 text-xs text-esotera-muted">Status da integração</p>
         <p className="mt-1">
           <J3StatusBadge status={detail.status} />
         </p>
@@ -424,17 +511,94 @@ function J3FulfillmentDetail({
       ) : null}
 
       {detail.status === "created" ? (
-        <div className="rounded-md border border-esotera-success/30 bg-esotera-success/5 px-3 py-2">
-          <p className="font-medium text-esotera-success">Criado na J3</p>
-          <p className="mt-1 text-esotera-muted">
-            J3 Order ID: {detail.j3OrderId || "—"}
-          </p>
-          <p className="text-esotera-muted">
-            J3 Order Code: {detail.j3OrderCode || "—"}
-          </p>
-          <p className="text-esotera-muted">
-            Tracking: {detail.j3TrackingNumber || "—"}
-          </p>
+        <div className="space-y-3">
+          <div className="rounded-md border border-esotera-success/30 bg-esotera-success/5 px-3 py-2">
+            <p className="font-medium text-esotera-success">Criado na J3</p>
+            <p className="mt-1 text-esotera-muted">
+              J3 Order ID: {detail.j3OrderId || "—"}
+            </p>
+            <p className="text-esotera-muted">
+              J3 Order Code: {detail.j3OrderCode || "—"}
+            </p>
+            <p className="text-esotera-muted">
+              Tracking: {detail.j3TrackingNumber || "—"}
+            </p>
+          </div>
+
+          {identifiersConflict ? (
+            <p
+              role="alert"
+              className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-amber-900"
+            >
+              Os identificadores J3 locais estão inconsistentes. A atualização
+              automática foi bloqueada.
+            </p>
+          ) : null}
+
+          <div className="rounded-md border border-esotera-border px-3 py-3">
+            <h3 className="font-medium text-esotera-text">Acompanhamento J3</h3>
+            <dl className="mt-2 grid gap-2">
+              <Row label="Código J3" value={detail.j3OrderCode || "—"} />
+              <Row label="Tracking" value={detail.j3TrackingNumber || "—"} />
+              <Row
+                label="Status da entrega"
+                value={
+                  detail.j3RemoteStatus?.trim()
+                    ? detail.j3RemoteStatus
+                    : "Ainda não sincronizado"
+                }
+              />
+              <Row
+                label="Última sincronização"
+                value={
+                  detail.j3LastStatusSyncAtUtc
+                    ? formatDate(detail.j3LastStatusSyncAtUtc)
+                    : "Nunca sincronizado"
+                }
+              />
+            </dl>
+
+            {detail.j3LastStatusSyncErrorCode ? (
+              <p
+                role="alert"
+                className="mt-3 rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-amber-900"
+              >
+                A última tentativa de sincronização falhou:{" "}
+                {detail.j3LastStatusSyncErrorCode}
+                {detail.j3LastStatusSyncErrorAtUtc
+                  ? ` · ${formatDate(detail.j3LastStatusSyncErrorAtUtc)}`
+                  : ""}
+              </p>
+            ) : null}
+
+            <div className="mt-3 flex flex-col gap-2">
+              {detail.status === "created" &&
+              hasOrderId &&
+              !hasCode &&
+              !hasTracking ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void hydrateIdentifiers()}
+                >
+                  {hydrating ? "Buscando…" : "Buscar identificadores J3"}
+                </Button>
+              ) : null}
+              {detail.status === "created" &&
+              hasCode &&
+              (!hasTracking || sameIdentifiers) ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!canSyncTracking}
+                  onClick={() => void syncTracking()}
+                >
+                  {syncingTracking ? "Atualizando…" : "Atualizar status J3"}
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
 

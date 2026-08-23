@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { ApiError } from "@/services/api/apiClient";
@@ -292,9 +292,11 @@ export default function AdminJ3FulfillmentsPage() {
         ) : selected ? (
           <J3FulfillmentDetail
             detail={selected}
-            onRefreshDetail={async () => {
-              const refreshed = await j3FulfillmentAdminApi.get(selected.id);
-              setSelected(refreshed);
+            onRefreshDetail={async (fulfillmentId) => {
+              const refreshed = await j3FulfillmentAdminApi.get(fulfillmentId);
+              setSelected((current) =>
+                current?.id === fulfillmentId ? refreshed : current,
+              );
               void load();
             }}
           />
@@ -313,13 +315,14 @@ function J3FulfillmentDetail({
   onRefreshDetail,
 }: {
   detail: J3FulfillmentAdminDetail;
-  onRefreshDetail: () => Promise<void>;
+  onRefreshDetail: (fulfillmentId: string) => Promise<void>;
 }) {
   const [sending, setSending] = useState(false);
   const [hydrating, setHydrating] = useState(false);
   const [syncingTracking, setSyncingTracking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionOk, setActionOk] = useState<string | null>(null);
+  const actionInFlightRef = useRef(false);
 
   const busy = sending || hydrating || syncingTracking;
 
@@ -327,9 +330,9 @@ function J3FulfillmentDetail({
   const hasCode = Boolean(detail.j3OrderCode?.trim());
   const hasTracking = Boolean(detail.j3TrackingNumber?.trim());
   const sameIdentifiers = j3CodesEqual(detail.j3OrderCode, detail.j3TrackingNumber);
-  const partialConflict = (hasCode && !hasTracking) || (!hasCode && hasTracking);
+  const codeOnly = hasCode && !hasTracking;
+  const trackingOnly = !hasCode && hasTracking;
   const directConflict = hasCode && hasTracking && !sameIdentifiers;
-  const identifiersConflict = partialConflict || directConflict;
 
   const canHydrate =
     detail.status === "created" &&
@@ -354,18 +357,22 @@ function J3FulfillmentDetail({
 
   function mapActionError(err: unknown, fallback: string): string {
     if (err instanceof ApiError) {
-      return (
-        err.detail ||
-        j3TrackingActionUserMessage(err.reasonCode) ||
-        err.userMessage ||
-        fallback
-      );
+      const mapped = j3TrackingActionUserMessage(err.reasonCode);
+      if (mapped) return mapped;
+      if (err.userMessage) return err.userMessage;
+      if (err.detail) return err.detail;
+      if (err.reasonCode) {
+        return `Não foi possível concluir a operação. Código: ${err.reasonCode}`;
+      }
+      return fallback;
     }
     return fallback;
   }
 
   async function sendToJ3() {
-    if (busy) return;
+    if (busy || actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
+    const actionFulfillmentId = detail.id;
     setSending(true);
     setActionError(null);
     setActionOk(null);
@@ -376,7 +383,7 @@ function J3FulfillmentDetail({
           ? `Status J3: ${result.status}`
           : `Estado atual: ${result.status}`,
       );
-      await onRefreshDetail();
+      await onRefreshDetail(actionFulfillmentId);
     } catch (err) {
       if (err instanceof ApiError) {
         setActionError(
@@ -388,17 +395,20 @@ function J3FulfillmentDetail({
         setActionError("Não foi possível enviar para a J3.");
       }
       try {
-        await onRefreshDetail();
+        await onRefreshDetail(actionFulfillmentId);
       } catch {
         /* ignore refresh errors */
       }
     } finally {
       setSending(false);
+      actionInFlightRef.current = false;
     }
   }
 
   async function hydrateIdentifiers() {
-    if (!canHydrate) return;
+    if (!canHydrate || actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
+    const actionFulfillmentId = detail.id;
     setHydrating(true);
     setActionError(null);
     setActionOk(null);
@@ -409,37 +419,41 @@ function J3FulfillmentDetail({
       } else {
         setActionOk("Identificadores J3 atualizados.");
       }
-      await onRefreshDetail();
+      await onRefreshDetail(actionFulfillmentId);
     } catch (err) {
       setActionError(mapActionError(err, "Não foi possível buscar identificadores J3."));
       try {
-        await onRefreshDetail();
+        await onRefreshDetail(actionFulfillmentId);
       } catch {
         /* ignore */
       }
     } finally {
       setHydrating(false);
+      actionInFlightRef.current = false;
     }
   }
 
   async function syncTracking() {
-    if (!canSyncTracking) return;
+    if (!canSyncTracking || actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
+    const actionFulfillmentId = detail.id;
     setSyncingTracking(true);
     setActionError(null);
     setActionOk(null);
     try {
       await j3FulfillmentAdminApi.syncTracking(detail.orderId);
       setActionOk("Status J3 atualizado.");
-      await onRefreshDetail();
+      await onRefreshDetail(actionFulfillmentId);
     } catch (err) {
       setActionError(mapActionError(err, "Não foi possível atualizar o status J3."));
       try {
-        await onRefreshDetail();
+        await onRefreshDetail(actionFulfillmentId);
       } catch {
         /* ignore */
       }
     } finally {
       setSyncingTracking(false);
+      actionInFlightRef.current = false;
     }
   }
 
@@ -525,13 +539,31 @@ function J3FulfillmentDetail({
             </p>
           </div>
 
-          {identifiersConflict ? (
+          {codeOnly ? (
+            <p
+              role="status"
+              className="rounded-md border border-sky-500/40 bg-sky-50 px-3 py-2 text-sky-900"
+            >
+              Tracking J3 ainda não está preenchido. A atualização de status
+              pode continuar usando o código J3.
+            </p>
+          ) : null}
+          {trackingOnly ? (
             <p
               role="alert"
               className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-amber-900"
             >
-              Os identificadores J3 locais estão inconsistentes. A atualização
-              automática foi bloqueada.
+              Existe um tracking J3 local, mas o código J3 não está preenchido.
+              As ações automáticas foram bloqueadas para evitar inconsistência.
+            </p>
+          ) : null}
+          {directConflict ? (
+            <p
+              role="alert"
+              className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-amber-900"
+            >
+              Os identificadores J3 locais são divergentes. A atualização foi
+              bloqueada para evitar consultar o pedido incorreto.
             </p>
           ) : null}
 

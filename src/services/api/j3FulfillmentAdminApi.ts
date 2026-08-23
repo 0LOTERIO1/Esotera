@@ -183,7 +183,10 @@ export function j3EligibilityUserMessage(reasonCode: string | undefined | null):
   }
 }
 
-export function j3TrackingActionUserMessage(reasonCode: string | undefined | null): string {
+/** Mensagem amigável para reasonCodes conhecidos; null se desconhecido/ausente. */
+export function j3TrackingActionUserMessage(
+  reasonCode: string | undefined | null,
+): string | null {
   switch (reasonCode) {
     case "J3_IDENTIFIER_HYDRATION_NOT_ELIGIBLE":
       return "Hidratação não elegível neste estado.";
@@ -224,8 +227,6 @@ export function j3TrackingActionUserMessage(reasonCode: string | undefined | nul
     case "TRACKING_SYNC_MISSING_REMOTE_ID":
       return "ID remoto ausente na resposta J3.";
     default:
-      return reasonCode
-        ? `Não foi possível concluir a operação J3 (${reasonCode}).`
-        : "Não foi possível concluir a operação J3.";
+      return null;
   }
 }

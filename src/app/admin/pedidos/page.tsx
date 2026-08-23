@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAdminRepository } from "@/services/repositories";
 import { adminApi } from "@/services/api/adminApi";
 import { ApiError } from "@/services/api/apiClient";
@@ -24,6 +24,20 @@ import { orderStatusLabels, paymentMethodLabels } from "@/utils/labels";
 import type { OrderStatus } from "@/types";
 import { useToastStore } from "@/stores/toastStore";
 
+/** Labels para status fiscal reais do backend (FiscalInvoiceStatus + awaiting_xml). */
+function fiscalStatusLabel(status: string): string {
+  switch (status) {
+    case "authorized":
+      return "Autorizado";
+    case "awaiting_xml":
+      return "Sem XML";
+    case "unknown":
+      return "XML importado, autorização não confirmada";
+    default:
+      return status.trim() ? status : "—";
+  }
+}
+
 export default function AdminOrdersPage() {
   const push = useToastStore((s) => s.push);
   const [query, setQuery] = useState("");
@@ -40,7 +54,16 @@ export default function AdminOrdersPage() {
   const [updating, setUpdating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importingFiscal, setImportingFiscal] = useState(false);
+  const [fiscalXmlFile, setFiscalXmlFile] = useState<File | null>(null);
   const [sendingJ3, setSendingJ3] = useState(false);
+  const fiscalXmlInputRef = useRef<HTMLInputElement>(null);
+
+  function clearFiscalXmlSelection() {
+    setFiscalXmlFile(null);
+    if (fiscalXmlInputRef.current) {
+      fiscalXmlInputRef.current.value = "";
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +100,7 @@ export default function AdminOrdersPage() {
   }, [load]);
 
   async function openDetail(id: string) {
+    clearFiscalXmlSelection();
     setDetailLoading(true);
     try {
       const detail = await getAdminRepository().getOrder(id);
@@ -149,12 +173,14 @@ export default function AdminOrdersPage() {
   }
 
   async function importFiscalXml(file: File | null) {
-    if (!selected || !file) return;
+    if (!selected || !file || importingFiscal) return;
+    if (selected.fiscal.fiscalStatus === "authorized") return;
     setImportingFiscal(true);
     try {
       const result = await adminApi.importFiscalInvoiceXml(selected.id, file);
       const refreshed = await getAdminRepository().getOrder(selected.id);
       if (refreshed) setSelected(refreshed);
+      clearFiscalXmlSelection();
       push(
         "success",
         result.idempotentReplay
@@ -448,11 +474,16 @@ export default function AdminOrdersPage() {
             <div className="mt-4 rounded border border-esotera-border/70 p-3 text-sm">
               <h3 className="text-esotera-text">NF-e</h3>
               <p className="mt-1 text-esotera-muted">
-                Status:{" "}
-                {selected.fiscal.fiscalStatus === "authorized"
-                  ? "Autorizado"
-                  : "Sem XML"}
+                Status: {fiscalStatusLabel(selected.fiscal.fiscalStatus)}
               </p>
+              {selected.fiscal.fiscalStatus === "unknown" ? (
+                <p
+                  role="status"
+                  className="mt-2 rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-amber-900"
+                >
+                  XML importado, mas autorização da NF-e não foi confirmada.
+                </p>
+              ) : null}
               {selected.fiscal.maskedChNFe ? (
                 <p className="mt-1 font-mono text-xs text-esotera-muted">
                   chNFe: {selected.fiscal.maskedChNFe}
@@ -464,27 +495,61 @@ export default function AdminOrdersPage() {
                   {selected.fiscal.invoiceSeries ?? "—"}
                 </p>
               ) : null}
-              <div className="mt-3">
-                <label className="inline-flex cursor-pointer items-center gap-2">
-                  <span className="sr-only">Importar XML da NF-e</span>
+
+              {selected.fiscal.fiscalStatus === "authorized" ? (
+                <p
+                  role="status"
+                  className="mt-3 rounded-md border border-esotera-success/30 bg-esotera-success/5 px-3 py-2 text-esotera-success"
+                >
+                  NF-e já importada e autorizada.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2">
                   <input
+                    ref={fiscalXmlInputRef}
+                    id="admin-fiscal-xml-input"
                     type="file"
                     accept=".xml,application/xml,text/xml"
-                    className="text-xs"
+                    className="sr-only"
                     disabled={importingFiscal}
                     onChange={(e) => {
                       const f = e.target.files?.[0] ?? null;
-                      e.target.value = "";
-                      void importFiscalXml(f);
+                      setFiscalXmlFile(f);
                     }}
                   />
-                </label>
-                <p className="mt-1 text-xs text-esotera-muted">
-                  {importingFiscal
-                    ? "Importando…"
-                    : "Importar XML da NF-e (.xml)"}
-                </p>
-              </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={importingFiscal}
+                      aria-label="Escolher arquivo XML da NF-e"
+                      onClick={() => fiscalXmlInputRef.current?.click()}
+                    >
+                      Escolher XML
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={
+                        !fiscalXmlFile ||
+                        importingFiscal ||
+                        selected.fiscal.fiscalStatus === "authorized"
+                      }
+                      onClick={() => void importFiscalXml(fiscalXmlFile)}
+                    >
+                      {importingFiscal ? "Importando…" : "Importar XML"}
+                    </Button>
+                  </div>
+                  {fiscalXmlFile ? (
+                    <p className="text-xs text-esotera-muted">
+                      Nome do arquivo: {fiscalXmlFile.name}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-esotera-muted">
+                      Selecione um arquivo .xml e clique em Importar XML.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {isJ3Shipping ? (
@@ -534,7 +599,10 @@ export default function AdminOrdersPage() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setSelected(null)}
+                onClick={() => {
+                  clearFiscalXmlSelection();
+                  setSelected(null);
+                }}
               >
                 Fechar
               </Button>

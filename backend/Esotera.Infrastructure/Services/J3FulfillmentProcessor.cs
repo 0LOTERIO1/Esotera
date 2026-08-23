@@ -13,6 +13,7 @@ namespace Esotera.Infrastructure.Services;
 
 /// <summary>
 /// Processor J3: Pending → eligibility → claim → (RetryableFailure | Created | UnknownOutcome).
+/// Após created persistido: hidratação best-effort read-only (getOrderDetails) — falha NÃO altera created.
 /// Gate: J3_FULFILLMENT_ENABLED + FiscalInvoice authorized + ChNFe.
 /// Sem stamp, sem retry, sem BackgroundService. Zero HTTP se inelegível.
 /// </summary>
@@ -22,6 +23,7 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
     private readonly IJ3FulfillmentService _fulfillment;
     private readonly IJ3FulfillmentClient _client;
     private readonly IJ3FulfillmentEligibilityService _eligibility;
+    private readonly IJ3IdentifierHydrationService _identifierHydration;
     private readonly J3ShippingOptions _j3;
     private readonly ILogger<J3FulfillmentProcessor> _logger;
 
@@ -30,6 +32,7 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
         IJ3FulfillmentService fulfillment,
         IJ3FulfillmentClient client,
         IJ3FulfillmentEligibilityService eligibility,
+        IJ3IdentifierHydrationService identifierHydration,
         IOptions<J3ShippingOptions> j3Options,
         ILogger<J3FulfillmentProcessor> logger)
     {
@@ -37,6 +40,7 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
         _fulfillment = fulfillment;
         _client = client;
         _eligibility = eligibility;
+        _identifierHydration = identifierHydration;
         _j3 = j3Options.Value;
         _logger = logger;
     }
@@ -165,7 +169,13 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
         switch (attempt.Outcome)
         {
             case J3CreateOrderOutcome.Success:
+                // PASSO A: persistir created + J3OrderId (SaveChanges dentro de MarkCreatedAsync).
                 await MarkCreatedAsync(fulfillmentId, attempt, cancellationToken);
+                // PASSO B: enriquecimento read-only best-effort — nunca reverte/altera created.
+                await TryHydrateIdentifiersBestEffortAsync(
+                    current.OrderId,
+                    fulfillmentId,
+                    cancellationToken);
                 break;
             case J3CreateOrderOutcome.DefiniteFailure:
                 await MarkRetryableFailureAsync(
@@ -296,6 +306,52 @@ public sealed class J3FulfillmentProcessor : IJ3FulfillmentProcessor
                 ex,
                 "J3 processor CRITICAL: remote Success for fulfillment {FulfillmentId} but local persist failed. Do not retry mutation.",
                 fulfillmentId);
+        }
+    }
+
+    /// <summary>
+    /// Best-effort: getOrderDetails após created já persistido.
+    /// Qualquer falha/outcome deixa Status=created intacto. Zero mutation J3. Zero tracking sync.
+    /// </summary>
+    private async Task TryHydrateIdentifiersBestEffortAsync(
+        Guid orderId,
+        Guid fulfillmentId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var outcome = await _identifierHydration.HydrateAsync(orderId, cancellationToken);
+            var bodyOutcome = outcome.Body?.Outcome;
+            var reason = J3FulfillmentErrorCodes.Sanitize(outcome.ReasonCode)
+                ?? J3FulfillmentErrorCodes.Sanitize(outcome.Body?.ErrorCode);
+
+            if (outcome.HttpStatus == 200
+                && (string.Equals(bodyOutcome, "Success", StringComparison.Ordinal)
+                    || string.Equals(bodyOutcome, "AlreadyHydrated", StringComparison.Ordinal)))
+            {
+                _logger.LogInformation(
+                    "J3 processor identifier hydration succeeded fulfillment {FulfillmentId} order {OrderId} outcome {HydrationOutcome}",
+                    fulfillmentId,
+                    orderId,
+                    bodyOutcome);
+                return;
+            }
+
+            _logger.LogInformation(
+                "J3 processor identifier hydration deferred/failed fulfillment {FulfillmentId} order {OrderId} http {HttpStatus} reason {ReasonCode} (created preserved)",
+                fulfillmentId,
+                orderId,
+                outcome.HttpStatus,
+                reason ?? "NONE");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException
+            || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                ex,
+                "J3 processor identifier hydration exception fulfillment {FulfillmentId} order {OrderId} (created preserved; no retry mutation)",
+                fulfillmentId,
+                orderId);
         }
     }
 

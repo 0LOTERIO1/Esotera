@@ -1,8 +1,9 @@
 namespace Esotera.Application.Interfaces;
 
 /// <summary>
-/// Hidratação manual admin: getOrderDetails (read-only) → J3OrderCode + J3TrackingNumber.
-/// Zero createTmsOrders / importOrderByAccessKey / processor / tracking sync.
+/// Hidratação getOrderDetails (read-only) → J3OrderCode + J3TrackingNumber.
+/// Usos: Admin manual e best-effort pós-create no processor.
+/// Zero createTmsOrders / importOrderByAccessKey / tracking sync.
 /// Não altera J3Fulfillment.Status de integração.
 /// </summary>
 public interface IJ3IdentifierHydrationService

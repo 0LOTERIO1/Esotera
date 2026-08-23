@@ -411,6 +411,7 @@ public class J3FulfillmentE2ETests
         private readonly IOptions<J3ShippingOptions> _j3Options;
 
         public FakeJ3FulfillmentClient Fake { get; } = new();
+        public FakeJ3OrderDetailsClient DetailsFake { get; } = new();
 
         private SqliteE2EHarness(
             SqliteConnection connection,
@@ -450,11 +451,16 @@ public class J3FulfillmentE2ETests
             var fulfillment = new J3FulfillmentService(
                 db, _j3Options, NullLogger<J3FulfillmentService>.Instance);
             var eligibility = new J3FulfillmentEligibilityService(db, _j3Options);
+            var hydration = new J3IdentifierHydrationService(
+                db,
+                DetailsFake,
+                NullLogger<J3IdentifierHydrationService>.Instance);
             return new J3FulfillmentProcessor(
                 db,
                 fulfillment,
                 Fake,
                 eligibility,
+                hydration,
                 _j3Options,
                 NullLogger<J3FulfillmentProcessor>.Instance);
         }

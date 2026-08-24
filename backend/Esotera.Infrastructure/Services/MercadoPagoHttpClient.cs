@@ -530,7 +530,8 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             || string.IsNullOrWhiteSpace(command.PayerState))
             return null;
 
-        return new Dictionary<string, object?>
+        // Orders API rejeita complement com length 0 — omitir quando vazio/whitespace.
+        var address = new Dictionary<string, object?>
         {
             ["zip_code"] = DigitsOnly(command.PayerZipCode) ?? command.PayerZipCode.Trim(),
             ["street_name"] = command.PayerStreetName.Trim(),
@@ -540,8 +541,12 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             ["state"] = command.PayerState.Trim().Length >= 2
                 ? command.PayerState.Trim()[..2].ToUpperInvariant()
                 : command.PayerState.Trim(),
-            ["complement"] = command.PayerComplement?.Trim() ?? "",
         };
+
+        if (!string.IsNullOrWhiteSpace(command.PayerComplement))
+            address["complement"] = command.PayerComplement.Trim();
+
+        return address;
     }
 
     private static Dictionary<string, object?>? BuildShipmentAddress(MercadoPagoCreatePaymentCommand command)

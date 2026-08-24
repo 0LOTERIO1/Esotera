@@ -422,6 +422,119 @@ public class MercadoPagoMultiMethodTests : IClassFixture<CustomWebApplicationFac
         snap.TicketUrl.Should().Contain("boleto");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task HttpClient_Boleto_OmitsEmptyComplement_FromPayerAndShipment(string? complement)
+    {
+        string? capturedBody = null;
+        var handler = new StubHandler(req =>
+        {
+            capturedBody = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return BoletoOkResponse();
+        });
+
+        var client = CreateHttpClient(handler, new CapturingLogger());
+        await client.CreatePaymentAsync(
+            BoletoCommand(complement),
+            Guid.NewGuid().ToString("N")[..32]);
+
+        using var doc = JsonDocument.Parse(capturedBody!);
+        var root = doc.RootElement;
+
+        var payerAddress = root.GetProperty("payer").GetProperty("address");
+        payerAddress.TryGetProperty("zip_code", out _).Should().BeTrue();
+        payerAddress.TryGetProperty("complement", out _).Should().BeFalse();
+
+        var shipAddress = root.GetProperty("shipment").GetProperty("address");
+        shipAddress.TryGetProperty("zip_code", out _).Should().BeTrue();
+        shipAddress.TryGetProperty("complement", out _).Should().BeFalse();
+
+        capturedBody.Should().NotContain("\"complement\"");
+        capturedBody.Should().NotContain("\"complement\":");
+        capturedBody.Should().NotContain("\"complement\": \"\"");
+        capturedBody.Should().NotContain("\"complement\":null");
+    }
+
+    [Fact]
+    public async Task HttpClient_Boleto_SendsTrimmedComplement_OnPayerAndShipment()
+    {
+        string? capturedBody = null;
+        var handler = new StubHandler(req =>
+        {
+            capturedBody = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return BoletoOkResponse();
+        });
+
+        var client = CreateHttpClient(handler, new CapturingLogger());
+        await client.CreatePaymentAsync(
+            BoletoCommand("  apto 44  "),
+            Guid.NewGuid().ToString("N")[..32]);
+
+        using var doc = JsonDocument.Parse(capturedBody!);
+        var root = doc.RootElement;
+
+        root.GetProperty("payer").GetProperty("address")
+            .GetProperty("complement").GetString().Should().Be("apto 44");
+        root.GetProperty("shipment").GetProperty("address")
+            .GetProperty("complement").GetString().Should().Be("apto 44");
+    }
+
+    private static MercadoPagoCreatePaymentCommand BoletoCommand(string? complement) =>
+        new(
+            50m,
+            "Pedido",
+            "22222222-2222-2222-2222-222222222222",
+            "buyer@test.com",
+            "Joao",
+            "Silva",
+            "19119119100",
+            "bolbradesco",
+            "ticket",
+            null,
+            null,
+            null,
+            null,
+            false,
+            "01310100",
+            "Av Paulista",
+            "1000",
+            "Bela Vista",
+            "Sao Paulo",
+            "SP",
+            complement);
+
+    private static HttpResponseMessage BoletoOkResponse() =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """
+                {
+                  "id": "ORDBOL000000000000001",
+                  "status": "action_required",
+                  "status_detail": "pending_waiting_payment",
+                  "external_reference": "22222222-2222-2222-2222-222222222222",
+                  "total_amount": "50.00",
+                  "currency_id": "BRL",
+                  "transactions": {
+                    "payments": [{
+                      "id": "PAYBOL000000000000001",
+                      "payment_method": {
+                        "id": "boleto",
+                        "type": "ticket",
+                        "ticket_url": "https://example.test/boleto",
+                        "digitable_line": "23793.LINE",
+                        "barcode_content": "23791BAR"
+                      }
+                    }]
+                  }
+                }
+                """,
+                Encoding.UTF8,
+                "application/json")
+        };
+
     [Fact]
     public async Task HttpClient_Debit_OmitsInstallments()
     {

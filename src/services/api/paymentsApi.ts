@@ -6,6 +6,10 @@ export type CreatePaymentApiRequest = {
   installments?: number | null;
   issuerId?: string | null;
   payerEmail?: string | null;
+  /** bank_transfer | credit_card | debit_card | ticket */
+  paymentMethodType?: string | null;
+  payerIdentificationType?: string | null;
+  payerIdentificationNumber?: string | null;
 };
 
 export type CreatePaymentApiResponse = {
@@ -21,6 +25,8 @@ export type CreatePaymentApiResponse = {
   qrCodeBase64?: string | null;
   dateOfExpiration?: string | null;
   message: string;
+  digitableLine?: string | null;
+  barcodeContent?: string | null;
 };
 
 export type PaymentEnvironmentConfig = {
@@ -70,6 +76,39 @@ function normalizePaymentConfig(raw: Record<string, unknown>): PaymentEnvironmen
   };
 }
 
+function normalizeCreatePaymentResponse(
+  raw: Record<string, unknown>,
+): CreatePaymentApiResponse {
+  return {
+    orderId: String(raw.orderId ?? raw.OrderId ?? ""),
+    orderNumber: String(raw.orderNumber ?? raw.OrderNumber ?? ""),
+    amount: Number(raw.amount ?? raw.Amount ?? 0),
+    currency: String(raw.currency ?? raw.Currency ?? "BRL"),
+    status: String(raw.status ?? raw.Status ?? ""),
+    mercadoPagoOrderId: (raw.mercadoPagoOrderId ??
+      raw.MercadoPagoOrderId ??
+      null) as string | null,
+    mercadoPagoPaymentId: (raw.mercadoPagoPaymentId ??
+      raw.MercadoPagoPaymentId ??
+      null) as string | null,
+    ticketUrl: (raw.ticketUrl ?? raw.TicketUrl ?? null) as string | null,
+    qrCode: (raw.qrCode ?? raw.QrCode ?? null) as string | null,
+    qrCodeBase64: (raw.qrCodeBase64 ?? raw.QrCodeBase64 ?? null) as
+      | string
+      | null,
+    dateOfExpiration: (raw.dateOfExpiration ??
+      raw.DateOfExpiration ??
+      null) as string | null,
+    message: String(raw.message ?? raw.Message ?? ""),
+    digitableLine: (raw.digitableLine ?? raw.DigitableLine ?? null) as
+      | string
+      | null,
+    barcodeContent: (raw.barcodeContent ?? raw.BarcodeContent ?? null) as
+      | string
+      | null,
+  };
+}
+
 function normalizeSandboxResponse(
   raw: Record<string, unknown>,
 ): SandboxPixTestResponse {
@@ -114,7 +153,7 @@ export const paymentsApi = {
     input: CreatePaymentApiRequest,
     idempotencyKey: string,
   ): Promise<CreatePaymentApiResponse> {
-    return apiClient.post<CreatePaymentApiResponse>(
+    const raw = await apiClient.post<Record<string, unknown>>(
       `/api/orders/${orderId}/payments`,
       {
         token: input.token ?? null,
@@ -122,12 +161,16 @@ export const paymentsApi = {
         installments: input.installments ?? null,
         issuerId: input.issuerId ?? null,
         payerEmail: input.payerEmail ?? null,
+        paymentMethodType: input.paymentMethodType ?? null,
+        payerIdentificationType: input.payerIdentificationType ?? null,
+        payerIdentificationNumber: input.payerIdentificationNumber ?? null,
       },
       {
         auth: true,
         headers: { "Idempotency-Key": idempotencyKey },
       },
     );
+    return normalizeCreatePaymentResponse(raw ?? {});
   },
 
   async createSandboxPixTest(

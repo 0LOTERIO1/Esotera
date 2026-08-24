@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { MercadoPagoBrick } from "@/components/checkout/MercadoPagoBrick";
+import {
+  MercadoPagoBrick,
+  type PaymentOutcomeInfo,
+} from "@/components/checkout/MercadoPagoBrick";
 import { SandboxPaymentCheckout } from "@/components/checkout/SandboxPaymentCheckout";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { isRealPaymentEnabled } from "@/config/storeMode";
@@ -23,15 +26,20 @@ function isSandboxTestMode(cfg: PaymentEnvironmentConfig | null): boolean {
   return cfg.sandboxPixEnabled === true && (env === "test" || env === "sandbox");
 }
 
+function formatExpiration(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString("pt-BR");
+}
+
 export default function PagarPedidoPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = String(params.id ?? "");
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pixCode, setPixCode] = useState<string | null>(null);
-  const [pixQr, setPixQr] = useState<string | null>(null);
-  const [pixLabel, setPixLabel] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<PaymentOutcomeInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [mpConfig, setMpConfig] = useState<PaymentEnvironmentConfig | null>(
@@ -100,6 +108,7 @@ export default function PagarPedidoPage() {
     };
   }, [orderId, router]);
 
+  // Soft refresh: só redireciona quando a API do pedido confirmar payment_approved.
   useEffect(() => {
     if (!order || order.status === "payment_approved" || sandboxMode) return;
     const id = window.setInterval(async () => {
@@ -134,9 +143,18 @@ export default function PagarPedidoPage() {
     );
   }
 
-  // Test+sandbox: UI estilo MP sem Brick comercial.
-  // Production: Brick comercial (valor real do pedido).
   const showCommercialBrick = !sandboxMode && isRealPaymentEnabled();
+  const outcomeStatus = (outcome?.status ?? "").toLowerCase();
+  const showPix =
+    outcome?.paymentMethodType === "bank_transfer" &&
+    (outcome.qrCode || outcome.qrCodeBase64);
+  const showBoleto =
+    outcome?.paymentMethodType === "ticket" &&
+    (outcome.ticketUrl || outcome.digitableLine || outcome.barcodeContent);
+  const showCardStatus =
+    (outcome?.paymentMethodType === "credit_card" ||
+      outcome?.paymentMethodType === "debit_card") &&
+    outcomeStatus.length > 0;
 
   return (
     <div className="mx-auto max-w-lg px-4 py-12 sm:px-6">
@@ -183,12 +201,18 @@ export default function PagarPedidoPage() {
             orderId={order.id}
             amount={order.total}
             payerEmail={order.upSellerExport?.customerEmail}
-            onPaid={() => router.replace(`/pedido-confirmado/${order.id}`)}
-            onPending={({ qrCode, qrCodeBase64 }) => {
-              if (qrCode) setPixCode(qrCode);
-              if (qrCodeBase64) setPixQr(qrCodeBase64);
-              setPixLabel(`Pix do pedido · ${formatCurrency(order.total)}`);
+            onPaid={async () => {
+              // Não marca order.status localmente; só redireciona se a API confirmar.
+              try {
+                const fresh = await ordersApi.getMine(order.id);
+                if (fresh?.status === "payment_approved") {
+                  router.replace(`/pedido-confirmado/${order.id}`);
+                }
+              } catch {
+                // ignore — webhook/soft-refresh permanece autoridade
+              }
             }}
+            onOutcome={setOutcome}
           />
         </div>
       ) : null}
@@ -199,33 +223,98 @@ export default function PagarPedidoPage() {
         </p>
       ) : null}
 
-      {!sandboxMode && (pixQr || pixCode) ? (
+      {!sandboxMode && showPix ? (
         <div className="mt-8 space-y-3 rounded-md border border-esotera-border p-4">
           <p className="text-sm font-medium text-esotera-text">
-            {pixLabel ?? "Pix"}
+            Pix do pedido · {formatCurrency(order.total)}
           </p>
-          {pixQr ? (
+          <p className="text-sm text-esotera-muted">Aguardando pagamento</p>
+          {outcome?.qrCodeBase64 ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={
-                pixQr.startsWith("data:")
-                  ? pixQr
-                  : `data:image/png;base64,${pixQr}`
+                outcome.qrCodeBase64.startsWith("data:")
+                  ? outcome.qrCodeBase64
+                  : `data:image/png;base64,${outcome.qrCodeBase64}`
               }
               alt="QR Code Pix"
               className="mx-auto h-48 w-48"
             />
           ) : null}
-          {pixCode ? (
+          {outcome?.qrCode ? (
             <div>
               <p className="text-xs text-esotera-muted">Pix copia e cola</p>
               <textarea
                 readOnly
                 className="mt-1 w-full rounded-md border border-esotera-border bg-esotera-surface p-2 text-xs"
                 rows={4}
-                value={pixCode}
+                value={outcome.qrCode}
               />
             </div>
+          ) : null}
+          {outcome?.dateOfExpiration ? (
+            <p className="text-xs text-esotera-muted">
+              Expira em: {formatExpiration(outcome.dateOfExpiration)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!sandboxMode && showBoleto ? (
+        <div className="mt-8 space-y-3 rounded-md border border-esotera-border p-4">
+          <p className="text-sm font-medium text-esotera-text">Boleto gerado</p>
+          <p className="text-sm text-esotera-muted">Aguardando pagamento</p>
+          {outcome?.ticketUrl ? (
+            <a
+              href={outcome.ticketUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-sm text-esotera-primary hover:underline"
+            >
+              Abrir boleto
+            </a>
+          ) : null}
+          {outcome?.digitableLine ? (
+            <div>
+              <p className="text-xs text-esotera-muted">Linha digitável</p>
+              <textarea
+                readOnly
+                className="mt-1 w-full rounded-md border border-esotera-border bg-esotera-surface p-2 text-xs"
+                rows={3}
+                value={outcome.digitableLine}
+              />
+            </div>
+          ) : null}
+          {outcome?.barcodeContent ? (
+            <p className="text-xs text-esotera-muted break-all">
+              Código de barras: {outcome.barcodeContent}
+            </p>
+          ) : null}
+          {outcome?.dateOfExpiration ? (
+            <p className="text-xs text-esotera-muted">
+              Vencimento: {formatExpiration(outcome.dateOfExpiration)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!sandboxMode && showCardStatus ? (
+        <div className="mt-8 space-y-2 rounded-md border border-esotera-border p-4">
+          <p className="text-sm font-medium text-esotera-text">
+            {outcomeStatus === "approved" || outcomeStatus === "processed"
+              ? "Pagamento aprovado"
+              : outcomeStatus === "rejected"
+                ? "Pagamento não aprovado"
+                : "Pagamento em processamento"}
+          </p>
+          {outcome?.message ? (
+            <p className="text-sm text-esotera-muted">{outcome.message}</p>
+          ) : null}
+          {outcomeStatus === "rejected" ? (
+            <p className="text-sm text-esotera-muted">
+              Você pode tentar outro cartão ou meio de pagamento no checkout
+              acima.
+            </p>
           ) : null}
         </div>
       ) : null}

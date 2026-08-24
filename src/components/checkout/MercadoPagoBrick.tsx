@@ -34,6 +34,7 @@ export function MercadoPagoBrick({
 }: MercadoPagoBrickProps) {
   const push = useToastStore((s) => s.push);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [brickError, setBrickError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const publicKey = getMercadoPagoPublicKey();
 
@@ -47,15 +48,13 @@ export function MercadoPagoBrick({
     ? null
     : "Public Key do Mercado Pago não configurada.";
 
+  // Somente Pix: AllOrArray = "all" | string[] — "none" NÃO é válido (422 no init).
   const customization = useMemo(
     () => ({
       paymentMethods: {
+        bankTransfer: ["pix"] as string[],
         maxInstallments: 1,
         minInstallments: 1,
-        creditCard: "none" as const,
-        debitCard: "none" as const,
-        ticket: "none" as const,
-        bankTransfer: ["pix"],
       },
       visual: {
         hidePaymentButton: false,
@@ -63,6 +62,24 @@ export function MercadoPagoBrick({
     }),
     [],
   );
+
+  const handleBrickError = useCallback(
+    (err: { type?: string; message?: string; cause?: string }) => {
+      const type = typeof err?.type === "string" ? err.type : "unknown";
+      const cause = typeof err?.cause === "string" ? err.cause.slice(0, 120) : undefined;
+      const message =
+        typeof err?.message === "string" ? err.message.slice(0, 200) : undefined;
+      console.error("Mercado Pago Payment Brick error", { type, cause, message });
+      setBrickError(
+        "Não foi possível carregar o checkout Pix. Tente novamente em instantes.",
+      );
+    },
+    [],
+  );
+
+  const handleBrickReady = useCallback(() => {
+    setBrickError(null);
+  }, []);
 
   const handleSubmit = useCallback(
     async (
@@ -160,6 +177,11 @@ export function MercadoPagoBrick({
           {submitError}
         </p>
       ) : null}
+      {brickError ? (
+        <p className="text-sm text-esotera-error" role="alert">
+          {brickError}
+        </p>
+      ) : null}
       <div className={submitting ? "pointer-events-none opacity-60" : undefined}>
         <Payment
           initialization={{
@@ -168,6 +190,8 @@ export function MercadoPagoBrick({
           }}
           customization={customization}
           onSubmit={handleSubmit as never}
+          onReady={handleBrickReady}
+          onError={handleBrickError}
         />
       </div>
     </div>

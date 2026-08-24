@@ -1,15 +1,22 @@
 namespace Esotera.Application.DTOs.Payments;
 
 /// <summary>
-/// Criação de pagamento. Fase 1: somente Pix (Orders API).
-/// Nunca inclui número de cartão ou CVV.
+/// Criação de pagamento via Orders API (Checkout Transparente).
+/// Nunca inclui número de cartão, CVV ou validade — apenas token do Brick.
 /// </summary>
 public record CreatePaymentRequest(
     string? Token,
     string PaymentMethodId,
     int? Installments,
     string? IssuerId,
-    string? PayerEmail
+    string? PayerEmail,
+    /// <summary>
+    /// bank_transfer | credit_card | debit_card | ticket.
+    /// Null + paymentMethodId=pix → bank_transfer (compatível com front Pix-only).
+    /// </summary>
+    string? PaymentMethodType = null,
+    string? PayerIdentificationType = null,
+    string? PayerIdentificationNumber = null
 );
 
 public record CreatePaymentResponse(
@@ -24,7 +31,9 @@ public record CreatePaymentResponse(
     string? QrCode,
     string? QrCodeBase64,
     string? DateOfExpiration,
-    string Message
+    string Message,
+    string? DigitableLine = null,
+    string? BarcodeContent = null
 );
 
 /// <summary>Config pública do MP (sem secrets).</summary>

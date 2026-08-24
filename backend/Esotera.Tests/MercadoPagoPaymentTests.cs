@@ -78,7 +78,7 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
     }
 
     [Fact]
-    public async Task CreatePayment_Card_IsRejectedInPhase1()
+    public async Task CreatePayment_Card_WithoutToken_IsRejected()
     {
         var (token, _) = await TestHelpers.RegisterNewUserAsync(
             _client, $"paycard{Guid.NewGuid():N}@test.com");
@@ -89,20 +89,23 @@ public class MercadoPagoPaymentTests : IClassFixture<CustomWebApplicationFactory
             new OrderAddressInput("01310100", "Av Paulista", "1000", null, "Bela Vista", "São Paulo", "SP"),
             null,
             "melhor_economico",
-            "pix",
-            null,
+            "card",
+            1,
             null);
         var orderRes = await TestHelpers.PostOrderAsync(_client, orderReq);
+        orderRes.EnsureSuccessStatusCode();
         var order = await orderRes.Content.ReadFromJsonAsync<OrderDto>(JsonOptions);
+        await TestHelpers.ForceOrderTotalAsync(_factory.Services, order!.Id, 50.00m);
 
-        using var payReq = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{order!.Id}/payments")
+        using var payReq = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{order.Id}/payments")
         {
             Content = JsonContent.Create(new CreatePaymentRequest(
-                "fake-card-token",
+                null,
                 "visa",
                 1,
                 null,
-                null))
+                null,
+                "credit_card"))
         };
         payReq.Headers.TryAddWithoutValidation("Idempotency-Key", $"pay-{Guid.NewGuid():N}"[..32]);
         payReq.Headers.Authorization = _client.DefaultRequestHeaders.Authorization;

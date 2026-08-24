@@ -11,7 +11,8 @@ using Microsoft.Extensions.Options;
 namespace Esotera.Infrastructure.Services;
 
 /// <summary>
-/// Cliente HTTP da Orders API (Checkout Transparente). Fase 1: somente Pix.
+/// Cliente HTTP da Orders API (Checkout Transparente).
+/// Pix, crédito, débito e boleto via POST /v1/orders.
 /// </summary>
 public class MercadoPagoHttpClient : IMercadoPagoClient
 {
@@ -32,7 +33,9 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         "email",
         "first_name",
         "last_name",
-        "phone"
+        "phone",
+        "digitable_line",
+        "barcode_content"
     };
 
     private readonly HttpClient _http;
@@ -56,42 +59,39 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
     {
         EnsureConfigured();
 
-        var methodId = (command.PaymentMethodId ?? "").Trim().ToLowerInvariant();
-        if (methodId is not "pix")
-        {
-            throw new ValidationException(
-                "paymentMethodId",
-                "Nesta fase somente Pix está disponível. Cartão e boleto em breve.");
-        }
-
+        var methodType = (command.PaymentMethodType ?? "").Trim().ToLowerInvariant();
         var amount = FormatAmount(command.TransactionAmount);
+        var paymentMethod = BuildPaymentMethodNode(command, methodType);
+
+        var paymentTx = new Dictionary<string, object?>
+        {
+            ["amount"] = amount,
+            ["payment_method"] = paymentMethod,
+        };
+
+        if (methodType == "ticket")
+            paymentTx["expiration_time"] = "P3D";
+
         var body = new Dictionary<string, object?>
         {
             ["type"] = "online",
+            ["processing_mode"] = "automatic",
             ["external_reference"] = command.ExternalReference,
             ["total_amount"] = amount,
-            ["payer"] = BuildPayer(
-                command.PayerEmail,
-                command.PayerFirstName,
-                command.IsSandboxOfficialTest ? null : command.PayerCpf),
+            ["payer"] = BuildPayer(command, methodType),
             ["transactions"] = new Dictionary<string, object?>
             {
-                ["payments"] = new object[]
-                {
-                    new Dictionary<string, object?>
-                    {
-                        ["amount"] = amount,
-                        ["payment_method"] = new Dictionary<string, object?>
-                        {
-                            ["id"] = "pix",
-                            ["type"] = "bank_transfer",
-                        },
-                    },
-                },
+                ["payments"] = new object[] { paymentTx },
             },
         };
 
-        // Contrato oficial do teste sandbox não envia description.
+        if ((methodType is "ticket" or "bank_transfer") && !command.IsSandboxOfficialTest)
+        {
+            var shipment = BuildShipmentAddress(command);
+            if (shipment is not null)
+                body["shipment"] = shipment;
+        }
+
         if (!command.IsSandboxOfficialTest && !string.IsNullOrWhiteSpace(command.Description))
             body["description"] = command.Description;
 
@@ -109,16 +109,17 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         if (!response.IsSuccessStatusCode)
         {
             var parsed = LogSafeApiError("CreateOrder", response, raw);
-            throw MapCreateOrderFailure(parsed);
+            throw MapCreateOrderFailure(parsed, methodType);
         }
 
         var snapshot = ParseOrder(raw);
         _logger.LogInformation(
-            "Mercado Pago order criada: OrderId={OrderId} PaymentId={PaymentId} Status={Status} StatusDetail={StatusDetail} ExternalReferencePrefix={ExternalReferencePrefix}",
+            "Mercado Pago order criada: OrderId={OrderId} PaymentId={PaymentId} Status={Status} StatusDetail={StatusDetail} MethodType={MethodType} ExternalReferencePrefix={ExternalReferencePrefix}",
             snapshot.OrderId,
             snapshot.TransactionPaymentId ?? "(ausente)",
             snapshot.Status,
             snapshot.StatusDetail,
+            methodType,
             snapshot.ExternalReference.Length >= 24
                 ? snapshot.ExternalReference[..24]
                 : snapshot.ExternalReference);
@@ -148,7 +149,88 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         return ParseOrder(raw);
     }
 
-    private ValidationException MapCreateOrderFailure(SafeMpErrorParsed parsed)
+    /// <summary>
+    /// Mapeia Brick/request → nó payment_method da Orders API.
+    /// bolbradesco (Brick) → id=boleto, type=ticket.
+    /// </summary>
+    internal static Dictionary<string, object?> BuildPaymentMethodNode(
+        MercadoPagoCreatePaymentCommand command,
+        string methodType)
+    {
+        var brickId = (command.PaymentMethodId ?? "").Trim().ToLowerInvariant();
+
+        return methodType switch
+        {
+            "bank_transfer" => new Dictionary<string, object?>
+            {
+                ["id"] = "pix",
+                ["type"] = "bank_transfer",
+            },
+            "credit_card" => BuildCardPaymentMethod(
+                brickId,
+                "credit_card",
+                command.Token,
+                installments: command.Installments ?? 1,
+                issuerId: command.IssuerId),
+            "debit_card" => BuildCardPaymentMethod(
+                brickId,
+                "debit_card",
+                command.Token,
+                installments: null,
+                issuerId: command.IssuerId),
+            "ticket" => new Dictionary<string, object?>
+            {
+                // Brick: bolbradesco → Orders: boleto + ticket
+                ["id"] = MapTicketPaymentMethodId(brickId),
+                ["type"] = "ticket",
+            },
+            _ => throw new ValidationException(
+                "paymentMethodType",
+                "Tipo de pagamento não suportado."),
+        };
+    }
+
+    private static Dictionary<string, object?> BuildCardPaymentMethod(
+        string methodId,
+        string type,
+        string? token,
+        int? installments,
+        string? issuerId)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            throw new ValidationException("token", "Token do cartão é obrigatório.");
+        if (string.IsNullOrWhiteSpace(methodId))
+            throw new ValidationException("paymentMethodId", "Método de pagamento inválido.");
+
+        var node = new Dictionary<string, object?>
+        {
+            ["id"] = methodId,
+            ["type"] = type,
+            ["token"] = token.Trim(),
+        };
+
+        if (installments is > 0)
+            node["installments"] = installments.Value;
+
+        // Issuer só quando o Brick enviar (não inventar).
+        if (!string.IsNullOrWhiteSpace(issuerId))
+            node["issuer_id"] = issuerId.Trim();
+
+        return node;
+    }
+
+    /// <summary>Brick ticket id → Orders API id.</summary>
+    public static string MapTicketPaymentMethodId(string brickOrOrdersId) =>
+        brickOrOrdersId switch
+        {
+            "bolbradesco" => "boleto",
+            "boleto" => "boleto",
+            _ => throw new ValidationException(
+                "paymentMethodId",
+                "Método de boleto não suportado."),
+        };
+
+    private ValidationException MapCreateOrderFailure(SafeMpErrorParsed parsed, string methodType)
     {
         var code = (parsed.Code ?? parsed.Error ?? "").Trim().ToLowerInvariant();
         if (code.Contains("invalid_email_for_sandbox", StringComparison.Ordinal)
@@ -158,9 +240,16 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             return new ValidationException("payment", MercadoPagoOptions.CommercialSandboxBlockedMessage);
         }
 
+        var label = methodType switch
+        {
+            "credit_card" or "debit_card" => "cartão",
+            "ticket" => "boleto",
+            _ => "Pix",
+        };
+
         return new ValidationException(
             "payment",
-            "Não foi possível criar o pagamento Pix. Verifique os dados e tente novamente.");
+            $"Não foi possível criar o pagamento ({label}). Verifique os dados e tente novamente.");
     }
 
     private void ApplyAuth(HttpRequestMessage request, string? idempotencyKey)
@@ -189,9 +278,6 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         string RequestId,
         string SanitizedBody);
 
-    /// <summary>
-    /// Lê o corpo real da resposta e registra apenas metadados seguros.
-    /// </summary>
     private SafeMpErrorParsed LogSafeApiError(string operation, HttpResponseMessage response, string rawBody)
     {
         var httpStatus = (int)response.StatusCode;
@@ -241,7 +327,6 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
                 if (causeParts.Count > 0)
                     causes = string.Join(" | ", causeParts);
 
-                // Orders API frequentemente usa só "code" no lugar de "error".
                 error ??= code;
             }
             catch (JsonException)
@@ -365,36 +450,112 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
     private static string FormatAmount(decimal amount) =>
         amount.ToString("0.00", CultureInfo.InvariantCulture);
 
-    private static object BuildPayer(string email, string? firstName, string? cpf)
+    private static object BuildPayer(MercadoPagoCreatePaymentCommand command, string methodType)
     {
-        var hasName = !string.IsNullOrWhiteSpace(firstName);
-        var hasCpf = !string.IsNullOrWhiteSpace(cpf);
+        var email = command.PayerEmail;
+        var hasName = !string.IsNullOrWhiteSpace(command.PayerFirstName);
+        var lastName = command.PayerLastName?.Trim();
+        var cpf = DigitsOnly(command.PayerCpf);
+        var hasCpf = cpf?.Length == 11;
+
+        if (methodType == "ticket")
+        {
+            // Orders API: boleto exige identification (+ preferimos address do pedido).
+            if (!hasCpf)
+                throw new ValidationException(
+                    "payerIdentification",
+                    "CPF do pagador é obrigatório para boleto.");
+
+            var payer = new Dictionary<string, object?>
+            {
+                ["email"] = email,
+                ["identification"] = new { type = "CPF", number = cpf },
+            };
+
+            if (hasName)
+                payer["first_name"] = command.PayerFirstName!.Trim();
+            if (!string.IsNullOrWhiteSpace(lastName))
+                payer["last_name"] = lastName;
+
+            var address = BuildPayerAddress(command);
+            if (address is not null)
+                payer["address"] = address;
+
+            return payer;
+        }
 
         if (hasName && hasCpf)
         {
-            var digits = new string(cpf!.Where(char.IsDigit).ToArray());
-            return new
+            var o = new Dictionary<string, object?>
             {
-                email,
-                first_name = firstName!.Trim(),
-                identification = new { type = "CPF", number = digits }
+                ["email"] = email,
+                ["first_name"] = command.PayerFirstName!.Trim(),
+                ["identification"] = new { type = "CPF", number = cpf },
             };
+            if (!string.IsNullOrWhiteSpace(lastName))
+                o["last_name"] = lastName;
+            return o;
         }
 
         if (hasName)
-            return new { email, first_name = firstName!.Trim() };
+        {
+            var o = new Dictionary<string, object?>
+            {
+                ["email"] = email,
+                ["first_name"] = command.PayerFirstName!.Trim(),
+            };
+            if (!string.IsNullOrWhiteSpace(lastName))
+                o["last_name"] = lastName;
+            return o;
+        }
 
         if (hasCpf)
         {
-            var digits = new string(cpf!.Where(char.IsDigit).ToArray());
-            return new
+            return new Dictionary<string, object?>
             {
-                email,
-                identification = new { type = "CPF", number = digits }
+                ["email"] = email,
+                ["identification"] = new { type = "CPF", number = cpf },
             };
         }
 
-        return new { email };
+        return new Dictionary<string, object?> { ["email"] = email };
+    }
+
+    private static Dictionary<string, object?>? BuildPayerAddress(MercadoPagoCreatePaymentCommand command)
+    {
+        if (string.IsNullOrWhiteSpace(command.PayerZipCode)
+            || string.IsNullOrWhiteSpace(command.PayerStreetName)
+            || string.IsNullOrWhiteSpace(command.PayerStreetNumber)
+            || string.IsNullOrWhiteSpace(command.PayerCity)
+            || string.IsNullOrWhiteSpace(command.PayerState))
+            return null;
+
+        return new Dictionary<string, object?>
+        {
+            ["zip_code"] = DigitsOnly(command.PayerZipCode) ?? command.PayerZipCode.Trim(),
+            ["street_name"] = command.PayerStreetName.Trim(),
+            ["street_number"] = command.PayerStreetNumber.Trim(),
+            ["neighborhood"] = command.PayerNeighborhood?.Trim() ?? "",
+            ["city"] = command.PayerCity.Trim(),
+            ["state"] = command.PayerState.Trim().Length >= 2
+                ? command.PayerState.Trim()[..2].ToUpperInvariant()
+                : command.PayerState.Trim(),
+            ["complement"] = command.PayerComplement?.Trim() ?? "",
+        };
+    }
+
+    private static Dictionary<string, object?>? BuildShipmentAddress(MercadoPagoCreatePaymentCommand command)
+    {
+        var address = BuildPayerAddress(command);
+        return address is null ? null : new Dictionary<string, object?> { ["address"] = address };
+    }
+
+    private static string? DigitsOnly(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        return digits.Length == 0 ? null : digits;
     }
 
     private static MercadoPagoPaymentSnapshot ParseOrder(string raw)
@@ -429,6 +590,8 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
         string? qrBase64 = null;
         string? ticketUrl = null;
         string? dateOfExpiration = null;
+        string? digitableLine = null;
+        string? barcodeContent = null;
 
         if (root.TryGetProperty("transactions", out var tx)
             && tx.TryGetProperty("payments", out var payments)
@@ -460,7 +623,7 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
                 if (payment.TryGetProperty("payment_method", out var pm)
                     && pm.ValueKind == JsonValueKind.Object)
                 {
-                    if (pm.TryGetProperty("id", out var pmid))
+                    if (pm.TryGetProperty("id", out var pmid) && pmid.ValueKind == JsonValueKind.String)
                         methodId = pmid.GetString();
                     if (pm.TryGetProperty("qr_code", out var qr))
                         qrCode = qr.GetString();
@@ -468,6 +631,10 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
                         qrBase64 = qrb.GetString();
                     if (pm.TryGetProperty("ticket_url", out var tu))
                         ticketUrl = tu.GetString();
+                    if (pm.TryGetProperty("digitable_line", out var dl))
+                        digitableLine = dl.GetString();
+                    if (pm.TryGetProperty("barcode_content", out var bc))
+                        barcodeContent = bc.GetString();
                 }
 
                 break;
@@ -486,7 +653,9 @@ public class MercadoPagoHttpClient : IMercadoPagoClient
             qrCode,
             qrBase64,
             ticketUrl,
-            dateOfExpiration);
+            dateOfExpiration,
+            digitableLine,
+            barcodeContent);
     }
 
     private static decimal ParseDecimal(JsonElement el)

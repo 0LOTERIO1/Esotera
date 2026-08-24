@@ -2,6 +2,7 @@ using Esotera.Application.DTOs.Payments;
 using Esotera.Application.Exceptions;
 using Esotera.Application.Interfaces;
 using Esotera.Application.Options;
+using Esotera.Application.Validators;
 using Esotera.Domain.Enums;
 using Esotera.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -63,22 +64,22 @@ public class PaymentService : IPaymentService
             .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId, cancellationToken)
             ?? throw new NotFoundException("Pedido", orderId);
 
-        if (order.Status is OrderStatus.PaymentApproved or OrderStatus.Cancelled)
+        if (order.Status == OrderStatus.PaymentApproved)
+            throw new ConflictException("Este pedido já está pago e não aceita novo pagamento.");
+
+        if (order.Status == OrderStatus.Cancelled)
             throw new ConflictException("Este pedido não aceita novo pagamento.");
+
+        var methodType = CreatePaymentRequestValidator.ResolveType(request)
+            ?? throw new ValidationException(
+                "paymentMethodType",
+                "Tipo de pagamento inválido. Use bank_transfer, credit_card, debit_card ou ticket.");
 
         var methodId = (request.PaymentMethodId ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(methodId))
             throw new ValidationException("paymentMethodId", "Informe o método de pagamento.");
 
-        if (methodId is not "pix")
-        {
-            throw new ValidationException(
-                "paymentMethodId",
-                "Nesta fase somente Pix está disponível. Cartão e boleto em breve.");
-        }
-
         // Em Test, só permite checkout comercial se o total coincidir com o valor oficial de teste.
-        // Nunca altera silenciosamente o total do pedido.
         if (_options.IsTestEnvironment
             && Math.Abs(order.Total - _options.SandboxPixAmount) > AmountTolerance)
         {
@@ -89,22 +90,36 @@ public class PaymentService : IPaymentService
             && string.Equals(order.PaymentIdempotencyKey, key, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(order.MercadoPagoOrderId))
         {
+            // Mesma tentativa (duplo clique / retry de rede): reconsulta a order existente.
             var existing = await _mp.GetOrderAsync(order.MercadoPagoOrderId, cancellationToken);
-            return MapResponse(order, existing);
+            return MapResponse(order, existing, methodType);
         }
 
         if (!string.IsNullOrWhiteSpace(order.PaymentIdempotencyKey)
             && !string.Equals(order.PaymentIdempotencyKey, key, StringComparison.Ordinal))
         {
-            throw new ConflictException(
-                "Já existe uma tentativa de pagamento para este pedido com outra chave de idempotência.");
+            if (!CanStartNewPaymentAttempt(order))
+            {
+                throw new ConflictException(
+                    "Já existe uma tentativa de pagamento em aberto para este pedido. Aguarde a confirmação ou use a mesma chave de idempotência.");
+            }
+
+            // Tentativa anterior terminou em rejeição definitiva — libera nova cobrança.
+            order.PaymentIdempotencyKey = null;
+            order.MercadoPagoOrderId = null;
+            order.MercadoPagoPaymentId = null;
+            order.MercadoPagoPaymentStatus = null;
         }
 
-        if (order.PaymentMethod != PaymentMethod.Pix)
-            order.PaymentMethod = PaymentMethod.Pix;
-        order.PaymentInstallments = null;
+        ApplyLocalPaymentMethod(order, methodType, request.Installments);
 
-        var (payerEmail, payerFirstName, payerCpf) = ResolvePayerForEnvironment(order, request);
+        var payer = ResolvePayerForEnvironment(order, request, methodType);
+        if (methodType == "ticket" && string.IsNullOrWhiteSpace(payer.Cpf))
+        {
+            throw new ValidationException(
+                "payerIdentification",
+                "CPF do pagador é obrigatório para boleto. Atualize o cadastro do pedido.");
+        }
 
         var snapshot = await _mp.CreatePaymentAsync(
             new MercadoPagoCreatePaymentCommand(
@@ -113,35 +128,53 @@ public class PaymentService : IPaymentService
                     ? null
                     : $"Pedido Esotera {order.OrderNumber}",
                 ExternalReference: order.Id.ToString("D"),
-                PayerEmail: payerEmail,
-                PayerFirstName: payerFirstName,
-                PayerCpf: payerCpf,
-                PaymentMethodId: "pix",
-                Token: null,
-                Installments: 1,
-                IssuerId: null,
+                PayerEmail: payer.Email,
+                PayerFirstName: payer.FirstName,
+                PayerLastName: payer.LastName,
+                PayerCpf: payer.Cpf,
+                PaymentMethodId: methodId,
+                PaymentMethodType: methodType,
+                Token: methodType is "credit_card" or "debit_card" ? request.Token?.Trim() : null,
+                Installments: methodType == "credit_card" ? (request.Installments ?? 1) : null,
+                IssuerId: string.IsNullOrWhiteSpace(request.IssuerId) ? null : request.IssuerId.Trim(),
                 NotificationUrl: _options.ResolveNotificationUrl(),
-                IsSandboxOfficialTest: false),
+                IsSandboxOfficialTest: false,
+                PayerZipCode: order.ShipCep,
+                PayerStreetName: order.ShipStreet,
+                PayerStreetNumber: order.ShipNumber,
+                PayerNeighborhood: order.ShipNeighborhood,
+                PayerCity: order.ShipCity,
+                PayerState: order.ShipState,
+                PayerComplement: order.ShipComplement),
             key,
             cancellationToken);
 
         ValidatePaymentMatchesOrder(order, snapshot);
 
+        var mappedPaymentStatus = MapPaymentStatus(snapshot.Status, snapshot.StatusDetail);
+
         order.PaymentIdempotencyKey = key;
         order.MercadoPagoOrderId = snapshot.OrderId;
         order.MercadoPagoPaymentId = snapshot.TransactionPaymentId;
         order.MercadoPagoPaymentStatus = snapshot.Status;
-        order.PaymentStatus = MapPaymentStatus(snapshot.Status, snapshot.StatusDetail);
+        order.PaymentStatus = mappedPaymentStatus;
         order.UpdatedAtUtc = DateTime.UtcNow;
+
+        // Rejeição definitiva: libera nova tentativa (limpa key) sem cancelar o pedido.
+        if (IsDefinitivePaymentFailure(snapshot.Status, snapshot.StatusDetail))
+        {
+            order.PaymentIdempotencyKey = null;
+            order.PaymentStatus = "rejected";
+        }
 
         ApplyStatusFromMercadoPago(
             order,
             snapshot.Status,
             snapshot.StatusDetail,
-            "Order Pix criada no Mercado Pago");
+            $"Order {methodType} criada no Mercado Pago");
 
         await PersistOrderAndJ3PendingAtomicallyAsync(order, cancellationToken);
-        return MapResponse(order, snapshot);
+        return MapResponse(order, snapshot, methodType);
     }
 
     public async Task<SandboxPixTestResponse> CreateSandboxPixTestAsync(
@@ -176,10 +209,12 @@ public class PaymentService : IPaymentService
                 ExternalReference: externalReference,
                 PayerEmail: MercadoPagoOptions.SandboxPayerEmail,
                 PayerFirstName: MercadoPagoOptions.SandboxPayerFirstName,
+                PayerLastName: null,
                 PayerCpf: null,
                 PaymentMethodId: "pix",
+                PaymentMethodType: "bank_transfer",
                 Token: null,
-                Installments: 1,
+                Installments: null,
                 IssuerId: null,
                 NotificationUrl: _options.ResolveNotificationUrl(),
                 IsSandboxOfficialTest: true),
@@ -277,7 +312,6 @@ public class PaymentService : IPaymentService
             return;
         }
 
-        // Não associa order de valor incompatível (ex.: teste R$50 em pedido comercial diferente).
         if (mpOrder.TransactionAmount > 0
             && Math.Abs(mpOrder.TransactionAmount - order.Total) > AmountTolerance)
         {
@@ -287,7 +321,35 @@ public class PaymentService : IPaymentService
             return;
         }
 
+        // Tentativa atual: webhook de outra order MP = stale (não sobrescreve B com A).
+        // MercadoPagoOrderId null → recovery (POST remoto ok, persistência incompleta).
+        if (!string.IsNullOrWhiteSpace(order.MercadoPagoOrderId)
+            && !string.Equals(
+                order.MercadoPagoOrderId.Trim(),
+                (mpOrder.OrderId ?? "").Trim(),
+                StringComparison.Ordinal))
+        {
+            _logger.LogInformation(
+                "stale Mercado Pago order notification ignored. OrderId={OrderId} HasCurrentMpOrderId={HasCurrent} HasReceivedMpOrderId={HasReceived}",
+                order.Id,
+                true,
+                !string.IsNullOrWhiteSpace(mpOrder.OrderId));
+            return;
+        }
+
         ValidatePaymentMatchesOrder(order, mpOrder);
+
+        // payment_approved monotônico: ignora pending/rejected/etc. da tentativa atual.
+        // Só reversões financeiras reais (refunded/charged_back) seguem.
+        if (order.Status == OrderStatus.PaymentApproved
+            && !IsFinancialReversal(mpOrder.Status, mpOrder.StatusDetail))
+        {
+            _logger.LogInformation(
+                "Webhook MP ignorado (payment_approved monotônico) para pedido {OrderId}.",
+                order.Id);
+            await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
+            return;
+        }
 
         var mappedPaymentStatus = MapPaymentStatus(mpOrder.Status, mpOrder.StatusDetail);
 
@@ -299,8 +361,6 @@ public class PaymentService : IPaymentService
             _logger.LogInformation(
                 "Webhook MP repetido ignorado (idempotente) para pedido {OrderId}.",
                 order.Id);
-            // Mesmo request não duplica EnsurePending. Webhook repetido repara Pending ausente
-            // (janela SaveChanges approved → falha EnsurePending) sem HTTP 5xx / retry storm.
             await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
             return;
         }
@@ -312,13 +372,20 @@ public class PaymentService : IPaymentService
         order.PaymentStatus = mappedPaymentStatus;
         order.UpdatedAtUtc = DateTime.UtcNow;
 
+        // Nunca limpar key / marcar rejected se já aprovado (evita nova cobrança).
+        if (IsDefinitivePaymentFailure(mpOrder.Status, mpOrder.StatusDetail)
+            && order.Status != OrderStatus.PaymentApproved)
+        {
+            order.PaymentIdempotencyKey = null;
+            order.PaymentStatus = "rejected";
+        }
+
         ApplyStatusFromMercadoPago(
             order,
             mpOrder.Status,
             mpOrder.StatusDetail,
             $"Webhook MP order: {mpOrder.Status}/{mpOrder.StatusDetail}");
 
-        // GetOrderAsync (HTTP MP) já terminou. Transaction só banco local.
         await PersistOrderAndJ3PendingAtomicallyAsync(order, cancellationToken);
         _logger.LogInformation(
             "Pedido {OrderId} atualizado via webhook MP (OrderId={MpOrderId} Status={Status} StatusDetail={StatusDetail}).",
@@ -329,10 +396,37 @@ public class PaymentService : IPaymentService
     }
 
     /// <summary>
-    /// J3 + payment_approved (relacional): Order + histórico + Pending na mesma transaction.
-    /// PAC/SEDEX e InMemory: SaveChanges + EnsurePending sem transaction extra.
-    /// Zero HTTP dentro da transaction.
+    /// Nova tentativa só após falha definitiva (rejected/failed/expired/cancelled do MP)
+    /// e sem pagamento aprovado. Pending/action_required/in_process = fail-closed.
     /// </summary>
+    public static bool CanStartNewPaymentAttempt(Domain.Entities.Order order)
+    {
+        if (order.Status == OrderStatus.PaymentApproved)
+            return false;
+
+        if (string.Equals(order.PaymentStatus, "rejected", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return IsDefinitivePaymentFailure(order.MercadoPagoPaymentStatus, null);
+    }
+
+    internal static bool IsDefinitivePaymentFailure(string? mpStatus, string? mpStatusDetail)
+    {
+        var status = (mpStatus ?? "").Trim().ToLowerInvariant();
+        var detail = (mpStatusDetail ?? "").Trim().ToLowerInvariant();
+
+        if (status is "rejected" or "failed" or "cancelled" or "canceled" or "expired")
+            return true;
+
+        if (detail is "rejected" or "cc_rejected_other_reason" or "cc_rejected_insufficient_amount"
+            or "cc_rejected_bad_filled_security_code" or "cc_rejected_bad_filled_date"
+            or "cc_rejected_bad_filled_other" or "cc_rejected_high_risk"
+            or "cc_rejected_blacklist" or "cc_rejected_call_for_authorize")
+            return true;
+
+        return false;
+    }
+
     private async Task PersistOrderAndJ3PendingAtomicallyAsync(
         Domain.Entities.Order order,
         CancellationToken cancellationToken)
@@ -353,10 +447,6 @@ public class PaymentService : IPaymentService
         await tx.CommitAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Invariante: payment_approved AND ShippingMethodId == j3 → exatamente um J3Fulfillment.
-    /// J3_FULFILLMENT_ENABLED não participa. Zero HTTP J3 / zero processor.
-    /// </summary>
     private Task EnsureJ3FulfillmentPendingIfApprovedAsync(
         Domain.Entities.Order order,
         CancellationToken cancellationToken) =>
@@ -368,26 +458,77 @@ public class PaymentService : IPaymentService
     {
         if (_options.IsProductionEnvironment)
             return true;
-        // Em Test, checkout comercial só faz sentido se o valor oficial de teste for usado.
         return _options.CanUseSandboxPixTest;
     }
 
-    private (string Email, string? FirstName, string? Cpf) ResolvePayerForEnvironment(
+    private static void ApplyLocalPaymentMethod(
         Domain.Entities.Order order,
-        CreatePaymentRequest request)
+        string methodType,
+        int? installments)
+    {
+        order.PaymentMethod = methodType switch
+        {
+            "bank_transfer" => PaymentMethod.Pix,
+            "credit_card" or "debit_card" => PaymentMethod.Card,
+            "ticket" => PaymentMethod.Boleto,
+            _ => order.PaymentMethod,
+        };
+
+        order.PaymentInstallments = methodType == "credit_card" ? (installments ?? 1) : null;
+    }
+
+    private (string Email, string? FirstName, string? LastName, string? Cpf) ResolvePayerForEnvironment(
+        Domain.Entities.Order order,
+        CreatePaymentRequest request,
+        string methodType)
     {
         if (_options.IsTestEnvironment)
         {
+            // Boleto em Test ainda precisa de CPF válido no body Orders.
+            var testCpf = methodType == "ticket"
+                ? (TryNormalizeCpf(order.CustomerCpf) ?? "19119119100")
+                : null;
             return (
                 MercadoPagoOptions.SandboxPayerEmail,
                 MercadoPagoOptions.SandboxPayerFirstName,
-                null);
+                "User",
+                testCpf);
         }
 
         var email = string.IsNullOrWhiteSpace(request.PayerEmail)
             ? order.CustomerEmail
             : request.PayerEmail.Trim();
-        return (email, null, order.CustomerCpf);
+
+        // Preferir dados confiáveis do pedido; Brick só complementa se Order não tiver CPF.
+        var cpf = TryNormalizeCpf(order.CustomerCpf)
+            ?? TryNormalizeCpf(request.PayerIdentificationNumber);
+
+        SplitCustomerName(order.CustomerName, out var first, out var last);
+
+        return (email, first, last, cpf);
+    }
+
+    private static void SplitCustomerName(string? fullName, out string? first, out string? last)
+    {
+        first = null;
+        last = null;
+        if (string.IsNullOrWhiteSpace(fullName))
+            return;
+
+        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return;
+        first = parts[0];
+        if (parts.Length > 1)
+            last = string.Join(' ', parts.Skip(1));
+    }
+
+    private static string? TryNormalizeCpf(string? cpf)
+    {
+        if (string.IsNullOrWhiteSpace(cpf))
+            return null;
+        var digits = new string(cpf.Where(char.IsDigit).ToArray());
+        return digits.Length == 11 ? digits : null;
     }
 
     private void ValidatePaymentMatchesOrder(Domain.Entities.Order order, MercadoPagoPaymentSnapshot payment)
@@ -422,10 +563,30 @@ public class PaymentService : IPaymentService
             return;
         }
 
+        // payment_approved só regride via reversão financeira (refunded/charged_back → cancelled).
+        if (order.Status == OrderStatus.PaymentApproved
+            && target != OrderStatus.Cancelled)
+        {
+            _logger.LogInformation(
+                "Pedido {OrderId}: regressão de payment_approved ignorada (status remoto {MpStatus}/{MpDetail}).",
+                order.Id,
+                mpStatus,
+                mpStatusDetail);
+            return;
+        }
+
+        if (order.Status == OrderStatus.PaymentApproved
+            && target == OrderStatus.Cancelled
+            && !IsFinancialReversal(mpStatus, mpStatusDetail))
+        {
+            _logger.LogWarning(
+                "Pedido {OrderId}: cancelamento sem reversão financeira reconhecida ignorado.",
+                order.Id);
+            return;
+        }
+
         var from = order.Status;
         order.Status = target;
-        // DbSet.Add: Guid PK em entidade nova na coleção de Order já tracked vira Modified
-        // (UPDATE 0 rows) no SQLite/Postgres; InMemory ignora. Webhook respondia 200 sem persistir.
         _context.OrderStatusHistories.Add(new Domain.Entities.OrderStatusHistory
         {
             Id = Guid.NewGuid(),
@@ -437,6 +598,17 @@ public class PaymentService : IPaymentService
         });
     }
 
+    /// <summary>Reversões financeiras reais já mapeadas — únicas que podem sair de payment_approved.</summary>
+    internal static bool IsFinancialReversal(string? mpStatus, string? mpStatusDetail)
+    {
+        var status = (mpStatus ?? "").Trim().ToLowerInvariant();
+        return status is "refunded" or "charged_back";
+    }
+
+    /// <summary>
+    /// Rejeição/expiração de meio NÃO cancela o pedido (permite nova tentativa).
+    /// Apenas refunded/charged_back após fluxo de pagamento → cancelled.
+    /// </summary>
     private static string? ResolveEsoteraStatus(string mpStatus, string? mpStatusDetail)
     {
         var status = (mpStatus ?? "").Trim().ToLowerInvariant();
@@ -446,12 +618,17 @@ public class PaymentService : IPaymentService
             || detail is "accredited")
             return OrderStatus.PaymentApproved;
 
-        if (status is "cancelled" or "canceled" or "expired" or "failed" or "refunded" or "charged_back"
-            || detail is "rejected" or "cancelled" or "canceled")
+        if (status is "refunded" or "charged_back")
             return OrderStatus.Cancelled;
 
+        // rejected / failed / cancelled / expired / pending → permanece ou volta a awaiting_payment
+        if (status is "rejected" or "failed" or "cancelled" or "canceled" or "expired"
+            || detail.StartsWith("cc_rejected", StringComparison.Ordinal)
+            || detail is "rejected")
+            return OrderStatus.AwaitingPayment;
+
         if (status is "action_required" or "created" or "pending" or "in_process" or "in_mediation"
-            || detail is "waiting_transfer" or "pending_waiting_transfer")
+            || detail is "waiting_transfer" or "pending_waiting_transfer" or "pending_waiting_payment")
             return OrderStatus.AwaitingPayment;
 
         return null;
@@ -465,6 +642,9 @@ public class PaymentService : IPaymentService
 
     private static string MapPaymentStatus(string mpStatus, string? mpStatusDetail)
     {
+        if (IsDefinitivePaymentFailure(mpStatus, mpStatusDetail))
+            return "rejected";
+
         var resolved = ResolveEsoteraStatus(mpStatus, mpStatusDetail);
         return resolved switch
         {
@@ -476,15 +656,22 @@ public class PaymentService : IPaymentService
 
     private static CreatePaymentResponse MapResponse(
         Domain.Entities.Order order,
-        MercadoPagoPaymentSnapshot payment)
+        MercadoPagoPaymentSnapshot payment,
+        string? methodTypeHint = null)
     {
         var uiStatus = MapPaymentStatus(payment.Status, payment.StatusDetail);
-        var awaiting = uiStatus == "pending";
-        var message = uiStatus == "approved"
-            ? "Pagamento aprovado."
-            : awaiting
-                ? "Aguardando pagamento. Pix gerado — escaneie o QR Code ou use o código copia e cola."
-                : "Pagamento em processamento.";
+        var methodHint = (methodTypeHint ?? order.PaymentMethod ?? "").ToLowerInvariant();
+        var message = uiStatus switch
+        {
+            "approved" => "Pagamento aprovado.",
+            "rejected" => "Pagamento não aprovado. Você pode tentar outro meio ou cartão.",
+            "pending" when methodHint is "ticket" or "boleto" =>
+                "Boleto gerado. O pedido só será confirmado após a compensação.",
+            "pending" when methodHint is "pix" or "bank_transfer" =>
+                "Aguardando pagamento. Pix gerado — escaneie o QR Code ou use o código copia e cola.",
+            "pending" => "Pagamento em processamento. Aguarde a confirmação.",
+            _ => "Pagamento em processamento.",
+        };
 
         return new(
             order.Id,
@@ -498,6 +685,8 @@ public class PaymentService : IPaymentService
             payment.QrCode,
             payment.QrCodeBase64,
             payment.DateOfExpiration,
-            message);
+            message,
+            payment.DigitableLine,
+            payment.BarcodeContent);
     }
 }

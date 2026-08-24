@@ -1,7 +1,7 @@
 namespace Esotera.Application.Interfaces;
 
 /// <summary>
-/// Comando para criar order Pix na Orders API (fase 1 — somente Pix).
+/// Comando para criar order na Orders API (Checkout Transparente).
 /// </summary>
 public record MercadoPagoCreatePaymentCommand(
     decimal TransactionAmount,
@@ -9,13 +9,24 @@ public record MercadoPagoCreatePaymentCommand(
     string ExternalReference,
     string PayerEmail,
     string? PayerFirstName,
+    string? PayerLastName,
     string? PayerCpf,
+    /// <summary>ID recebido do Brick (ex.: pix, visa, bolbradesco).</summary>
     string PaymentMethodId,
+    /// <summary>bank_transfer | credit_card | debit_card | ticket</summary>
+    string PaymentMethodType,
     string? Token,
-    int Installments,
+    int? Installments,
     string? IssuerId,
     string? NotificationUrl,
-    bool IsSandboxOfficialTest = false
+    bool IsSandboxOfficialTest = false,
+    string? PayerZipCode = null,
+    string? PayerStreetName = null,
+    string? PayerStreetNumber = null,
+    string? PayerNeighborhood = null,
+    string? PayerCity = null,
+    string? PayerState = null,
+    string? PayerComplement = null
 );
 
 /// <summary>
@@ -34,12 +45,14 @@ public record MercadoPagoPaymentSnapshot(
     string? QrCode,
     string? QrCodeBase64,
     string? TicketUrl,
-    string? DateOfExpiration
+    string? DateOfExpiration,
+    string? DigitableLine = null,
+    string? BarcodeContent = null
 );
 
 public interface IMercadoPagoClient
 {
-    /// <summary>Cria order Pix via POST /v1/orders.</summary>
+    /// <summary>Cria order via POST /v1/orders.</summary>
     Task<MercadoPagoPaymentSnapshot> CreatePaymentAsync(
         MercadoPagoCreatePaymentCommand command,
         string idempotencyKey,

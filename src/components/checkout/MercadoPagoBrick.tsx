@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initMercadoPago, Payment } from "@mercadopago/sdk-react";
-import type { IPaymentBrickCustomization } from "@mercadopago/sdk-react/esm/bricks/payment/type";
+import type {
+  IPaymentBrickCustomization,
+  IPaymentBrickPayer,
+} from "@mercadopago/sdk-react/esm/bricks/payment/type";
 import { getMercadoPagoPublicKey } from "@/config/mercadoPago";
 import {
   paymentsApi,
@@ -13,7 +16,7 @@ import { createIdempotencyKey } from "@/utils/orderIdempotency";
 import { formatCurrency } from "@/utils/format";
 import { ApiError } from "@/services/api/apiClient";
 import { useToastStore } from "@/stores/toastStore";
-
+import { onlyDigits } from "@/utils/validation";
 export type PaymentOutcomeInfo = {
   status: string;
   message?: string | null;
@@ -29,13 +32,31 @@ export type PaymentOutcomeInfo = {
 type MercadoPagoBrickProps = {
   orderId: string;
   amount: number;
-  payerEmail?: string;
+  /** Prefill do Brick a partir do pedido (sem secrets). */
+  payer?: BrickPayerPrefill | null;
   isTestEnvironment?: boolean;
   onPaid?: () => void;
   onOutcome?: (info: PaymentOutcomeInfo) => void;
 };
 
-type BrickPayer = {
+/** Dados de pagador/endereço para initialization.payer (SDK IPaymentBrickPayer). */
+export type BrickPayerPrefill = {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  identification?: { type: string; number: string };
+  address?: {
+    zipCode: string;
+    streetName: string;
+    streetNumber: string;
+    neighborhood?: string;
+    city?: string;
+    federalUnit?: string;
+    complement?: string;
+  };
+};
+
+type BrickFormPayer = {
   email?: string;
   identification?: { type?: string; number?: string };
 };
@@ -65,6 +86,76 @@ function readString(value: unknown): string | undefined {
   return undefined;
 }
 
+/** Divide nome completo em first/last para o Brick (primeiro token / resto). */
+export function splitPersonName(fullName: string): {
+  firstName?: string;
+  lastName?: string;
+} {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return { firstName: parts[0] };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+/**
+ * Monta prefill do Payment Brick a partir do Order já carregado.
+ * Sem inventar campos — só mapeia o que existir.
+ */
+export function buildBrickPayerFromOrder(order: {
+  upSellerExport?: {
+    customerName?: string;
+    customerEmail?: string;
+    customerCpf?: string;
+  };
+  shipping?: {
+    address?: {
+      cep?: string;
+      street?: string;
+      number?: string;
+      complement?: string;
+      neighborhood?: string;
+      city?: string;
+      state?: string;
+    };
+  };
+}): BrickPayerPrefill | null {
+  const exportData = order.upSellerExport;
+  const address = order.shipping?.address;
+  const { firstName, lastName } = splitPersonName(
+    exportData?.customerName?.trim() ?? "",
+  );
+  const email = exportData?.customerEmail?.trim() || undefined;
+  const cpfDigits = onlyDigits(exportData?.customerCpf ?? "");
+  const zipDigits = onlyDigits(address?.cep ?? "");
+
+  const prefill: BrickPayerPrefill = {};
+  if (email) prefill.email = email;
+  if (firstName) prefill.firstName = firstName;
+  if (lastName) prefill.lastName = lastName;
+  if (cpfDigits.length === 11) {
+    prefill.identification = { type: "CPF", number: cpfDigits };
+  }
+
+  const streetName = address?.street?.trim();
+  const streetNumber = address?.number?.trim();
+  if (zipDigits.length === 8 && streetName && streetNumber) {
+    prefill.address = {
+      zipCode: zipDigits,
+      streetName,
+      streetNumber,
+      neighborhood: address?.neighborhood?.trim() || undefined,
+      city: address?.city?.trim() || undefined,
+      federalUnit: address?.state?.trim() || undefined,
+      complement: address?.complement?.trim() || undefined,
+    };
+  }
+
+  return Object.keys(prefill).length > 0 ? prefill : null;
+}
+
 /**
  * Payment Brick — Checkout Transparente multi-meios (Pix, crédito, débito, boleto).
  * Amount de cobrança é autoridade do backend (order.Total).
@@ -72,7 +163,7 @@ function readString(value: unknown): string | undefined {
 export function MercadoPagoBrick({
   orderId,
   amount,
-  payerEmail,
+  payer,
   onPaid,
   onOutcome,
 }: MercadoPagoBrickProps) {
@@ -82,6 +173,15 @@ export function MercadoPagoBrick({
   const [submitting, setSubmitting] = useState(false);
   /** Barreira síncrona contra double-submit (state React sozinho não basta). */
   const submitLockRef = useRef(false);
+  /** Contagem de onReady — remount do Brick incrementa (instrumentação). */
+  const brickReadyCountRef = useRef(0);
+  /** Refs estáveis: callbacks do pai não devem forçar remount do SDK Payment. */
+  const onPaidRef = useRef(onPaid);
+  const onOutcomeRef = useRef(onOutcome);
+  useEffect(() => {
+    onPaidRef.current = onPaid;
+    onOutcomeRef.current = onOutcome;
+  }, [onPaid, onOutcome]);
   const publicKey = getMercadoPagoPublicKey();
 
   const ready = useMemo(() => {
@@ -112,6 +212,45 @@ export function MercadoPagoBrick({
     [],
   );
 
+  /**
+   * O SDK Payment remonta o Brick quando `initialization` muda por referência
+   * (useEffect deps). Memoizar evita wipe de formulário em setState local.
+   */
+  const initialization = useMemo(() => {
+    const brickPayer: IPaymentBrickPayer = {};
+
+    if (payer?.email) brickPayer.email = payer.email;
+    if (payer?.firstName) brickPayer.firstName = payer.firstName;
+    if (payer?.lastName) brickPayer.lastName = payer.lastName;
+    if (payer?.identification?.type && payer.identification.number) {
+      brickPayer.identification = {
+        type: payer.identification.type,
+        number: payer.identification.number,
+      };
+    }
+    if (
+      payer?.address?.zipCode &&
+      payer.address.streetName &&
+      payer.address.streetNumber
+    ) {
+      brickPayer.address = {
+        zipCode: payer.address.zipCode,
+        streetName: payer.address.streetName,
+        streetNumber: payer.address.streetNumber,
+        neighborhood: payer.address.neighborhood,
+        city: payer.address.city,
+        federalUnit: payer.address.federalUnit,
+        complement: payer.address.complement,
+      };
+    }
+
+    const hasPayer = Object.keys(brickPayer).length > 0;
+    return {
+      amount,
+      ...(hasPayer ? { payer: brickPayer } : {}),
+    };
+  }, [amount, payer]);
+
   const handleBrickError = useCallback(
     (err: { type?: string; message?: string; cause?: string }) => {
       const type = typeof err?.type === "string" ? err.type : "unknown";
@@ -120,15 +259,23 @@ export function MercadoPagoBrick({
       const message =
         typeof err?.message === "string" ? err.message.slice(0, 200) : undefined;
       console.error("Mercado Pago Payment Brick error", { type, cause, message });
-      setBrickError(
-        "Não foi possível carregar o checkout. Tente novamente em instantes.",
-      );
+      // non_critical (ex.: lookup CEP) NÃO deve derrubar o checkout / forçar panic UI.
+      if (type === "critical") {
+        setBrickError(
+          "Não foi possível carregar o checkout. Tente novamente em instantes.",
+        );
+      }
     },
     [],
   );
 
   const handleBrickReady = useCallback(() => {
-    setBrickError(null);
+    brickReadyCountRef.current += 1;
+    console.info("Mercado Pago Payment Brick ready", {
+      count: brickReadyCountRef.current,
+    });
+    // Evita setState no-op → re-render desnecessário após cada ready.
+    setBrickError((prev) => (prev == null ? prev : null));
   }, []);
 
   const buildRequest = useCallback(
@@ -141,12 +288,12 @@ export function MercadoPagoBrick({
         return { error: "Método de pagamento não informado pelo checkout." };
       }
 
-      const payer = (formData.payer ?? {}) as BrickPayer;
+      const formPayer = (formData.payer ?? {}) as BrickFormPayer;
       const email =
-        readString(payer.email) ??
-        (payerEmail && payerEmail.trim() ? payerEmail.trim() : undefined);
-      const idType = readString(payer.identification?.type);
-      const idNumber = readString(payer.identification?.number);
+        readString(formPayer.email) ??
+        (payer?.email && payer.email.trim() ? payer.email.trim() : undefined);
+      const idType = readString(formPayer.identification?.type);
+      const idNumber = readString(formPayer.identification?.number);
 
       if (backendType === "bank_transfer") {
         if (paymentMethodId !== "pix") {
@@ -208,7 +355,7 @@ export function MercadoPagoBrick({
         payerIdentificationNumber: idNumber ?? null,
       };
     },
-    [payerEmail],
+    [payer?.email],
   );
 
   const handleResult = useCallback(
@@ -228,8 +375,8 @@ export function MercadoPagoBrick({
 
       if (status === "approved" || status === "processed") {
         push("success", result.message || "Pagamento aprovado.");
-        onOutcome?.(outcome);
-        onPaid?.();
+        onOutcomeRef.current?.(outcome);
+        onPaidRef.current?.();
         return;
       }
 
@@ -239,7 +386,7 @@ export function MercadoPagoBrick({
           result.message ||
             "Pagamento não aprovado. Você pode tentar outro meio ou cartão.",
         );
-        onOutcome?.(outcome);
+        onOutcomeRef.current?.(outcome);
         return;
       }
 
@@ -259,9 +406,9 @@ export function MercadoPagoBrick({
       } else {
         push("info", result.message || "Pagamento em processamento.");
       }
-      onOutcome?.(outcome);
+      onOutcomeRef.current?.(outcome);
     },
-    [onOutcome, onPaid, push],
+    [push],
   );
 
   const handleSubmit = useCallback(
@@ -361,10 +508,7 @@ export function MercadoPagoBrick({
       ) : null}
       <div className={submitting ? "pointer-events-none opacity-60" : undefined}>
         <Payment
-          initialization={{
-            amount,
-            payer: payerEmail ? { email: payerEmail } : undefined,
-          }}
+          initialization={initialization}
           customization={customization}
           onSubmit={handleSubmit as never}
           onReady={handleBrickReady}

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MercadoPagoBrick,
+  buildBrickPayerFromOrder,
   type PaymentOutcomeInfo,
 } from "@/components/checkout/MercadoPagoBrick";
 import { SandboxPaymentCheckout } from "@/components/checkout/SandboxPaymentCheckout";
@@ -108,9 +109,18 @@ export default function PagarPedidoPage() {
     };
   }, [orderId, router]);
 
+  const orderStatus = order?.status;
+  const brickPayer = useMemo(
+    () => (order ? buildBrickPayerFromOrder(order) : null),
+    [order],
+  );
+
   // Soft refresh: só redireciona quando a API do pedido confirmar payment_approved.
+  // Não faz setOrder — evita recriar props do Brick a cada 5s.
   useEffect(() => {
-    if (!order || order.status === "payment_approved" || sandboxMode) return;
+    if (!orderStatus || orderStatus === "payment_approved" || sandboxMode) {
+      return;
+    }
     const id = window.setInterval(async () => {
       try {
         const fresh = await ordersApi.getMine(orderId);
@@ -122,7 +132,22 @@ export default function PagarPedidoPage() {
       }
     }, 5000);
     return () => window.clearInterval(id);
-  }, [order, orderId, router, sandboxMode]);
+  }, [orderStatus, orderId, router, sandboxMode]);
+
+  const handlePaid = useCallback(async () => {
+    try {
+      const fresh = await ordersApi.getMine(orderId);
+      if (fresh?.status === "payment_approved") {
+        router.replace(`/pedido-confirmado/${orderId}`);
+      }
+    } catch {
+      // ignore — webhook/soft-refresh permanece autoridade
+    }
+  }, [orderId, router]);
+
+  const handleOutcome = useCallback((info: PaymentOutcomeInfo) => {
+    setOutcome(info);
+  }, []);
 
   if (loading) return <LoadingState label="Carregando pagamento…" />;
 
@@ -200,19 +225,9 @@ export default function PagarPedidoPage() {
           <MercadoPagoBrick
             orderId={order.id}
             amount={order.total}
-            payerEmail={order.upSellerExport?.customerEmail}
-            onPaid={async () => {
-              // Não marca order.status localmente; só redireciona se a API confirmar.
-              try {
-                const fresh = await ordersApi.getMine(order.id);
-                if (fresh?.status === "payment_approved") {
-                  router.replace(`/pedido-confirmado/${order.id}`);
-                }
-              } catch {
-                // ignore — webhook/soft-refresh permanece autoridade
-              }
-            }}
-            onOutcome={setOutcome}
+            payer={brickPayer}
+            onPaid={handlePaid}
+            onOutcome={handleOutcome}
           />
         </div>
       ) : null}

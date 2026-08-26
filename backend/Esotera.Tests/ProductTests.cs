@@ -56,7 +56,9 @@ public class ProductTests : IClassFixture<CustomWebApplicationFactory>
             new[] { "Item 1" },
             null,
             true,
-            true
+            true,
+            false,
+            $"SKU-ADM-{Guid.NewGuid():N}"[..20]
         );
 
         var response = await _client.PostAsJsonAsync("/api/admin/products", request);

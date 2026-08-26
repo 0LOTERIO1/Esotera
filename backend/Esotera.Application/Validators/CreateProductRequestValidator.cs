@@ -29,7 +29,18 @@ public class CreateProductRequestValidator : AbstractValidator<CreateProductRequ
 
         RuleFor(x => x.Description)
             .MaximumLength(10000).When(x => x.Description != null);
+
+        RuleFor(x => x.Sku)
+            .MaximumLength(64).WithMessage("SKU deve ter no máximo 64 caracteres.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Sku));
+
+        RuleFor(x => x.Sku)
+            .Must((req, sku) => HasNamedVariations(req.Variations) || !string.IsNullOrWhiteSpace(sku))
+            .WithMessage("SKU é obrigatório para produtos sem variações.");
     }
+
+    internal static bool HasNamedVariations(ProductVariationDto[]? variations) =>
+        variations != null && variations.Any(v => !string.IsNullOrWhiteSpace(v.Name));
 }
 
 public class UpdateProductRequestValidator : AbstractValidator<UpdateProductRequest>
@@ -55,6 +66,10 @@ public class UpdateProductRequestValidator : AbstractValidator<UpdateProductRequ
 
         RuleFor(x => x.Description)
             .MaximumLength(10000).When(x => x.Description != null);
+
+        RuleFor(x => x.Sku)
+            .MaximumLength(64).WithMessage("SKU deve ter no máximo 64 caracteres.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Sku));
     }
 }
 

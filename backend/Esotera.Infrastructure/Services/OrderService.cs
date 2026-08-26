@@ -140,6 +140,14 @@ public class OrderService : IOrderService
                     if (!string.IsNullOrWhiteSpace(selected.ImageUrl))
                         imageUrl = selected.ImageUrl;
                 }
+                else
+                {
+                    skuSnapshot = string.IsNullOrWhiteSpace(product.Sku) ? null : product.Sku.Trim();
+                    if (skuSnapshot == null)
+                        throw new ValidationException(
+                            "items",
+                            $"Produto '{product.Name}' está sem SKU. Não é possível criar o pedido.");
+                }
 
                 var lineTotal = unitPrice * item.Quantity;
                 subtotal += lineTotal;

@@ -37,6 +37,7 @@ export type ApiProductDetail = {
   id: string;
   slug: string;
   name: string;
+  sku?: string | null;
   shortDescription?: string | null;
   description?: string | null;
   price: number;
@@ -171,6 +172,7 @@ export function mapProductDetail(api: ApiProductDetail): Product {
     id: api.id,
     slug: api.slug,
     name: api.name,
+    sku: api.sku ?? null,
     shortDescription: api.shortDescription ?? "",
     description: api.description ?? "",
     price: api.price,

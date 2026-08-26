@@ -5,6 +5,8 @@ public class Product
     public Guid Id { get; set; }
     public string Slug { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    /// <summary>SKU do produto-base (sem variação). Nullable para produtos legados.</summary>
+    public string? Sku { get; set; }
     public string? ShortDescription { get; set; }
     public string? Description { get; set; }
     public decimal Price { get; set; }

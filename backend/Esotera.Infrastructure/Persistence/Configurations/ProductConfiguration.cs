@@ -21,6 +21,13 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasMaxLength(200)
             .IsRequired();
 
+        builder.Property(x => x.Sku)
+            .HasMaxLength(64);
+
+        builder.HasIndex(x => x.Sku)
+            .IsUnique()
+            .HasFilter("\"Sku\" IS NOT NULL");
+
         builder.Property(x => x.ShortDescription)
             .HasMaxLength(500);
 

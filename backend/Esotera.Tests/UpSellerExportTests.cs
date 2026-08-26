@@ -141,6 +141,27 @@ public class UpSellerExportTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task PaidOrder_WithProductLevelSku_ExportsColumnT()
+    {
+        var orderId = await SeedPaidOrderAsync(
+            orderNumber: $"US-PSKU-{Guid.NewGuid():N}".Substring(0, 18),
+            items:
+            [
+                ("Pocket", "SKU-WAITE-POCKET", 59.90m, 1, null)
+            ]);
+
+        var admin = await TestHelpers.GetAdminTokenAsync(_client);
+        TestHelpers.SetBearerToken(_client, admin);
+
+        var response = await _client.GetAsync($"/api/admin/orders/{orderId}/upseller-export");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        var sheet = UpSellerXlsxReader.ReadSheetXml(bytes);
+        var shared = UpSellerXlsxReader.ReadSharedStrings(bytes);
+        UpSellerXlsxReader.GetCellText(sheet, shared, "T4").Should().Be("SKU-WAITE-POCKET");
+    }
+
+    [Fact]
     public async Task MultipleItems_ShareStoreAndOrderNumber()
     {
         var orderNumber = $"US-MULTI-{Guid.NewGuid():N}".Substring(0, 18);

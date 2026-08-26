@@ -22,6 +22,7 @@ import type { Product, ProductImageMeta, ProductVariation } from "@/types";
 const emptyForm = {
   name: "",
   slug: "",
+  sku: "",
   shortDescription: "",
   description: "",
   price: "",
@@ -44,8 +45,12 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
-/** Formato: Nome|preço|1ou0 (disponível). Uma variação por linha. */
-function parseVariations(value: string, fallbackPrice: number): ProductVariation[] {
+/** Formato: Nome|preço|1ou0|SKU (SKU opcional). Uma variação por linha. Linhas antigas sem SKU continuam válidas. */
+function parseVariations(
+  value: string,
+  fallbackPrice: number,
+  previous?: ProductVariation[],
+): ProductVariation[] {
   return value
     .split("\n")
     .map((line) => line.trim())
@@ -55,11 +60,17 @@ function parseVariations(value: string, fallbackPrice: number): ProductVariation
       const name = parts[0] || `Opção ${index + 1}`;
       const price = Number(parts[1]?.replace(",", ".")) || fallbackPrice;
       const available = parts[2] === undefined ? true : parts[2] !== "0";
+      const skuFromLine = parts[3] !== undefined ? parts[3] || null : undefined;
+      const prev =
+        previous?.find((p) => p.name === name) ??
+        previous?.[index];
       return {
-        id: `var-${index + 1}-${name.toLowerCase().replace(/\s+/g, "-")}`,
+        id: prev?.id ?? `var-${index + 1}-${name.toLowerCase().replace(/\s+/g, "-")}`,
         name,
         price,
         isAvailable: available,
+        sku: skuFromLine !== undefined ? skuFromLine : (prev?.sku ?? null),
+        imageUrl: prev?.imageUrl ?? null,
       };
     });
 }
@@ -67,7 +78,10 @@ function parseVariations(value: string, fallbackPrice: number): ProductVariation
 function formatVariations(variations?: ProductVariation[]): string {
   if (!variations?.length) return "";
   return variations
-    .map((v) => `${v.name}|${v.price}|${v.isAvailable ? 1 : 0}`)
+    .map((v) => {
+      const base = `${v.name}|${v.price}|${v.isAvailable ? 1 : 0}`;
+      return v.sku ? `${base}|${v.sku}` : base;
+    })
     .join("\n");
 }
 
@@ -215,6 +229,7 @@ export default function AdminProductsPage() {
       setForm({
         name: detail.name,
         slug: detail.slug,
+        sku: detail.sku ?? "",
         shortDescription: detail.shortDescription,
         description: detail.description,
         price: String(detail.price),
@@ -277,6 +292,17 @@ export default function AdminProductsPage() {
     if (form.slug.trim() && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())) {
       errors.slug = "Slug inválido (apenas a-z, 0-9 e hífens).";
     }
+    const hasVariations = form.variations
+      .split("\n")
+      .map((l) => l.trim())
+      .some(Boolean);
+    const sku = form.sku.trim();
+    if (!hasVariations && !sku) {
+      errors.sku = "SKU é obrigatório para produtos sem variações.";
+    }
+    if (sku.length > 64) {
+      errors.sku = "SKU deve ter no máximo 64 caracteres.";
+    }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -296,6 +322,7 @@ export default function AdminProductsPage() {
           createdAt: editing?.createdAt,
           rowVersion: editing?.rowVersion,
           name: form.name.trim(),
+          sku: form.sku.trim() || null,
           shortDescription: form.shortDescription.trim(),
           description: form.description.trim(),
           price,
@@ -304,7 +331,7 @@ export default function AdminProductsPage() {
           images: [imagePreview as string],
           features: splitList(form.features),
           packageContents: splitList(form.packageContents),
-          variations: parseVariations(form.variations, price),
+          variations: parseVariations(form.variations, price, editing?.variations),
           isFeatured: form.isFeatured,
           isAvailable: form.isAvailable,
           isDemo: false,
@@ -622,6 +649,26 @@ export default function AdminProductsPage() {
                   onChange={(e) => setForm({ ...form, price: e.target.value })}
                 />
               </FormField>
+              <FormField
+                label="SKU"
+                id="p-sku"
+                required={!form.variations.split("\n").map((l) => l.trim()).some(Boolean)}
+                error={formErrors.sku}
+                hint={
+                  form.variations.split("\n").map((l) => l.trim()).some(Boolean)
+                    ? "Com variações, o SKU de cada linha (Nome|preço|1|SKU) é o usado no UpSeller. O SKU base é opcional."
+                    : "Identificador usado na integração com o UpSeller. Use o mesmo SKU nos dois sistemas."
+                }
+              >
+                <input
+                  id="p-sku"
+                  className={inputClassName}
+                  maxLength={64}
+                  placeholder="SKU-WAITE-TAROT"
+                  value={form.sku}
+                  onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                />
+              </FormField>
               <FormField label="Categoria" id="p-category" required error={formErrors.category}>
                 {apiMode ? (
                   <>
@@ -734,7 +781,7 @@ export default function AdminProductsPage() {
               <FormField
                 label="Variações"
                 id="p-var"
-                hint="Uma por linha: Nome|preço|1 (disponível) ou 0 (indisponível). Ex.: Somente Tarô|54.90|1"
+                hint="Uma por linha: Nome|preço|1|SKU (SKU opcional). Ex.: Somente Tarô|54.90|1|SKU-WAITE-TAROT"
               >
                 <textarea
                   id="p-var"

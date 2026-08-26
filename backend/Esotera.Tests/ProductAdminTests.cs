@@ -95,7 +95,9 @@ public class ProductAdminTests : IClassFixture<CustomWebApplicationFactory>
             new[] { "P1" },
             null,
             false,
-            true);
+            true,
+            false,
+            $"SKU-2E-{Guid.NewGuid():N}"[..20]);
         var response = await _client.PostAsJsonAsync("/api/admin/products", request);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<ProductDto>(JsonOptions))!;
@@ -174,7 +176,8 @@ public class ProductAdminTests : IClassFixture<CustomWebApplicationFactory>
         var first = await CreateProductAsync();
         await AsAdminAsync();
         var response = await _client.PostAsJsonAsync("/api/admin/products", new CreateProductRequest(
-            "Outro", first.Slug, null, null, 10m, CategoryTarosId, null, null, null));
+            "Outro", first.Slug, null, null, 10m, CategoryTarosId, null, null, null,
+            false, true, false, $"SKU-OTHER-{Guid.NewGuid():N}"[..22]));
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 

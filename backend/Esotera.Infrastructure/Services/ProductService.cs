@@ -118,20 +118,28 @@ public class ProductService : IProductService
         if (!categoryExists)
             throw new NotFoundException("Categoria", request.CategoryId);
 
+        var normalizedVariations = request.Variations != null
+            ? NormalizeVariations(request.Variations, request.Price)
+            : Array.Empty<ProductVariationDto>();
+        var sku = NormalizeSku(request.Sku);
+        EnsureSkuForProductWithoutVariations(sku, normalizedVariations);
+        await EnsureSkuUniqueAsync(sku, excludeProductId: null);
+
         var now = DateTime.UtcNow;
         var product = new Product
         {
             Id = Guid.NewGuid(),
             Slug = slug,
             Name = request.Name.Trim(),
+            Sku = sku,
             ShortDescription = request.ShortDescription,
             Description = request.Description,
             Price = request.Price,
             CategoryId = request.CategoryId,
             FeaturesJson = SerializeArray(request.Features),
             PackageContentsJson = SerializeArray(request.PackageContents),
-            VariationsJson = request.Variations != null
-                ? ProductVariationJson.Serialize(NormalizeVariations(request.Variations, request.Price))
+            VariationsJson = normalizedVariations.Length > 0
+                ? ProductVariationJson.Serialize(normalizedVariations)
                 : null,
             IsFeatured = request.IsFeatured,
             IsAvailable = request.IsAvailable,
@@ -143,7 +151,14 @@ public class ProductService : IProductService
         };
 
         _context.Products.Add(product);
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsSkuUniqueViolation(ex))
+        {
+            throw new ConflictException("Já existe um produto com este SKU.");
+        }
 
         return (await GetByIdAsync(product.Id, includeArchived: true))!;
     }
@@ -188,9 +203,15 @@ public class ProductService : IProductService
         if (request.Variations != null)
             product.VariationsJson = ProductVariationJson.Serialize(
                 NormalizeVariations(request.Variations, request.Price ?? product.Price));
+        if (request.Sku != null)
+            product.Sku = NormalizeSku(request.Sku);
         if (request.IsFeatured.HasValue) product.IsFeatured = request.IsFeatured.Value;
         if (request.IsAvailable.HasValue) product.IsAvailable = request.IsAvailable.Value;
         if (request.IsDemo.HasValue) product.IsDemo = request.IsDemo.Value;
+
+        var effectiveVariations = ProductVariationJson.Parse(product.VariationsJson, product.Price);
+        EnsureSkuForProductWithoutVariations(product.Sku, effectiveVariations);
+        await EnsureSkuUniqueAsync(product.Sku, excludeProductId: id);
 
         product.RowVersion += 1;
         product.UpdatedAtUtc = DateTime.UtcNow;
@@ -203,6 +224,10 @@ public class ProductService : IProductService
         {
             throw new ConflictException(
                 "O produto foi alterado por outra operação. Atualize os dados e tente novamente.");
+        }
+        catch (DbUpdateException ex) when (IsSkuUniqueViolation(ex))
+        {
+            throw new ConflictException("Já existe um produto com este SKU.");
         }
 
         await _context.Entry(product).Reference(p => p.Category).LoadAsync();
@@ -478,6 +503,45 @@ public class ProductService : IProductService
     private static string? SerializeArray(string[]? values) =>
         values != null ? JsonSerializer.Serialize(values, JsonOptions) : null;
 
+    private static string? NormalizeSku(string? sku)
+    {
+        if (string.IsNullOrWhiteSpace(sku))
+            return null;
+        var trimmed = sku.Trim();
+        return trimmed.Length == 0 ? null : trimmed;
+    }
+
+    private static void EnsureSkuForProductWithoutVariations(
+        string? sku,
+        ProductVariationDto[] variations)
+    {
+        if (variations.Length == 0 && string.IsNullOrWhiteSpace(sku))
+            throw new ValidationException("sku", "SKU é obrigatório para produtos sem variações.");
+
+        if (sku != null && sku.Length > 64)
+            throw new ValidationException("sku", "SKU deve ter no máximo 64 caracteres.");
+    }
+
+    private async Task EnsureSkuUniqueAsync(string? sku, Guid? excludeProductId)
+    {
+        if (sku == null)
+            return;
+
+        var query = _context.Products.AsQueryable().Where(p => p.Sku == sku);
+        if (excludeProductId.HasValue)
+            query = query.Where(p => p.Id != excludeProductId.Value);
+
+        if (await query.AnyAsync())
+            throw new ConflictException("Já existe um produto com este SKU.");
+    }
+
+    private static bool IsSkuUniqueViolation(DbUpdateException ex)
+    {
+        var message = (ex.InnerException?.Message ?? ex.Message).ToLowerInvariant();
+        return message.Contains("ix_products_sku")
+            || (message.Contains("sku") && message.Contains("unique"));
+    }
+
     private static ProductVariationDto[] NormalizeVariations(
         ProductVariationDto[] variations,
         decimal fallbackPrice)
@@ -489,7 +553,7 @@ public class ProductService : IProductService
                 Id = string.IsNullOrWhiteSpace(v.Id) ? Guid.NewGuid().ToString("N") : v.Id.Trim(),
                 Name = v.Name.Trim(),
                 Price = v.Price > 0 ? v.Price : (v.IsAvailable ? fallbackPrice : 0),
-                Sku = string.IsNullOrWhiteSpace(v.Sku) ? null : v.Sku.Trim(),
+                Sku = NormalizeSku(v.Sku),
                 ImageUrl = string.IsNullOrWhiteSpace(v.ImageUrl) ? null : v.ImageUrl.Trim()
             })
             .ToArray();
@@ -531,6 +595,7 @@ public class ProductService : IProductService
             product.Id,
             product.Slug,
             product.Name,
+            product.Sku,
             product.ShortDescription,
             product.Description,
             product.Price,

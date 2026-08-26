@@ -12,7 +12,8 @@ public record CreateProductRequest(
     ProductVariationDto[]? Variations,
     bool IsFeatured = false,
     bool IsAvailable = true,
-    bool IsDemo = false
+    bool IsDemo = false,
+    string? Sku = null
 );
 
 public record UpdateProductRequest(
@@ -28,7 +29,8 @@ public record UpdateProductRequest(
     bool? IsFeatured,
     bool? IsAvailable,
     bool? IsDemo,
-    long? ExpectedVersion
+    long? ExpectedVersion,
+    string? Sku = null
 );
 
 public record UpdateProductImageRequest(

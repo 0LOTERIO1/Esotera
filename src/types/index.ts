@@ -21,6 +21,8 @@ export type Product = {
   id: string;
   slug: string;
   name: string;
+  /** SKU do produto-base (sem variação). */
+  sku?: string | null;
   shortDescription: string;
   description: string;
   price: number;

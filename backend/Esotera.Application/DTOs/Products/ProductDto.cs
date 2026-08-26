@@ -14,6 +14,7 @@ public record ProductDto(
     Guid Id,
     string Slug,
     string Name,
+    string? Sku,
     string? ShortDescription,
     string? Description,
     decimal Price,

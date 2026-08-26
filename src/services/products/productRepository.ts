@@ -84,6 +84,7 @@ export const productRepository = {
       id,
       slug,
       name: input.name.trim(),
+      sku: input.sku?.trim() || null,
       shortDescription: input.shortDescription.trim(),
       description: input.description.trim(),
       price: input.price,

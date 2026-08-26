@@ -126,6 +126,7 @@ export class ApiProductRepository implements IProductRepository {
         const raw = await adminApi.updateProduct(product.id, {
           name: product.name,
           slug,
+          sku: (product.sku ?? "").trim(),
           shortDescription: product.shortDescription,
           description: product.description,
           price: product.price,
@@ -142,6 +143,7 @@ export class ApiProductRepository implements IProductRepository {
         const raw = await adminApi.createProduct({
           name: product.name,
           slug,
+          sku: (product.sku ?? "").trim(),
           shortDescription: product.shortDescription,
           description: product.description,
           price: product.price,

@@ -4,6 +4,7 @@ export type ProductInput = {
   id?: string;
   slug?: string;
   name: string;
+  sku?: string | null;
   shortDescription: string;
   description: string;
   price: number;

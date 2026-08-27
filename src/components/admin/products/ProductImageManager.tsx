@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { ImageEditor } from "@/components/admin/ImageEditor";
+import { fetchImageAsFile } from "@/utils/imageCrop";
 import { ProductThumbnail } from "@/components/products/ProductThumbnail";
 import {
   MAX_IMAGE_BYTES,
@@ -21,6 +22,8 @@ type Props = {
   onUpdateAlt: (imageId: string, altText: string) => Promise<void>;
   onDelete: (imageId: string) => Promise<void>;
   onReorder: (imageIds: string[]) => Promise<void>;
+  /** Substitui o arquivo de uma imagem existente preservando posição, principal e alt. */
+  onReplace?: (imageId: string, file: File) => Promise<void>;
   /** Modo mock: apenas pré-visualização local, sem upload real. */
   mockMode?: boolean;
 };
@@ -34,15 +37,20 @@ export function ProductImageManager({
   onUpdateAlt,
   onDelete,
   onReorder,
+  onReplace,
   mockMode = false,
 }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [altDrafts, setAltDrafts] = useState<Record<string, string>>({});
-  const [pending, setPending] = useState<{ file: File; isPrimary: boolean } | null>(
-    null,
-  );
+  const [pending, setPending] = useState<{
+    file: File;
+    isPrimary: boolean;
+    /** Definido quando o editor foi aberto a partir de uma imagem já cadastrada. */
+    replaceImageId?: string;
+  } | null>(null);
+  const [loadingImageId, setLoadingImageId] = useState<string | null>(null);
 
   /** Abre o editor; o upload só acontece após confirmação do enquadramento. */
   function selectFile(file: File | null, isPrimary: boolean) {
@@ -56,11 +64,33 @@ export function ProductImageManager({
     setPending({ file, isPrimary });
   }
 
-  async function uploadEdited(file: File, isPrimary: boolean) {
+  /** Baixa a imagem publicada e reabre o mesmo editor para reenquadramento. */
+  async function editExisting(image: ProductImageMeta) {
+    setError(null);
+    setLoadingImageId(image.id);
+    try {
+      const file = await fetchImageAsFile(image.secureUrl, image.altText || "produto");
+      const validation = validateProductImage(file);
+      if (validation) throw new Error(validation);
+      setPending({ file, isPrimary: image.isPrimary, replaceImageId: image.id });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Não foi possível abrir a imagem atual.",
+      );
+    } finally {
+      setLoadingImageId(null);
+    }
+  }
+
+  async function submitEdited(file: File, isPrimary: boolean, replaceImageId?: string) {
     setPending(null);
     setUploading(true);
     try {
-      await onUpload(file, isPrimary);
+      if (replaceImageId && onReplace) {
+        await onReplace(replaceImageId, file);
+      } else {
+        await onUpload(file, isPrimary);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha no upload.");
     } finally {
@@ -158,6 +188,17 @@ export function ProductImageManager({
                       Definir principal
                     </Button>
                   )}
+                  {onReplace ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-8 px-2 text-xs"
+                      disabled={busy || uploading || loadingImageId === img.id}
+                      onClick={() => void editExisting(img)}
+                    >
+                      {loadingImageId === img.id ? "Abrindo…" : "Editar imagem"}
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"
@@ -219,7 +260,9 @@ export function ProductImageManager({
         <ImageEditor
           file={pending.file}
           onCancel={() => setPending(null)}
-          onConfirm={(edited) => void uploadEdited(edited, pending.isPrimary)}
+          onConfirm={(edited) =>
+            void submitEdited(edited, pending.isPrimary, pending.replaceImageId)
+          }
         />
       ) : null}
 

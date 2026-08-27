@@ -864,6 +864,46 @@ export default function AdminProductsPage() {
                     await load();
                     push("success", "Imagem removida.");
                   }}
+                  onReplace={async (imageId, file) => {
+                    const repo = getProductRepository();
+                    if (!repo.uploadImage || !repo.deleteImage) return;
+
+                    // Snapshot dos metadados antes de qualquer chamada.
+                    const current = detailImages.find((i) => i.id === imageId);
+                    const index = detailImages.findIndex((i) => i.id === imageId);
+                    const remainingIds = detailImages
+                      .map((i) => i.id)
+                      .filter((id) => id !== imageId);
+                    const wasPrimary = current?.isPrimary ?? false;
+                    const altText = current?.altText ?? undefined;
+
+                    // Remove antes de enviar: o backend limita a 8 imagens e
+                    // rejeitaria a nona durante a substituição.
+                    await repo.deleteImage(editing.id, imageId);
+
+                    try {
+                      const created = await repo.uploadImage(editing.id, file, {
+                        isPrimary: wasPrimary,
+                        altText,
+                      });
+                      if (repo.reorderImages && index >= 0) {
+                        const ids = [...remainingIds];
+                        ids.splice(index, 0, created.id);
+                        await repo.reorderImages(editing.id, ids);
+                      }
+                      push("success", "Imagem substituída.");
+                    } catch (err) {
+                      const detail =
+                        err instanceof Error ? err.message : "falha no envio";
+                      throw new Error(
+                        `A imagem antiga foi removida, mas o envio da nova falhou (${detail}). Envie a imagem novamente pelo botão de upload.`,
+                      );
+                    } finally {
+                      // Mantém a lista alinhada ao backend nos dois cenários.
+                      await refreshDetailImages(editing.id);
+                      await load();
+                    }
+                  }}
                   onReorder={async (imageIds) => {
                     const repo = getProductRepository();
                     if (!repo.reorderImages) return;

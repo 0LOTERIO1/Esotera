@@ -75,6 +75,32 @@ function scaleCanvas(source: HTMLCanvasElement, scale: number): HTMLCanvasElemen
 }
 
 /**
+ * Baixa uma imagem já publicada (Cloudinary) como File editável.
+ * Usa a URL original, sem transformação, para não reeditar sobre um derivado.
+ */
+export async function fetchImageAsFile(url: string, fileName = "imagem"): Promise<File> {
+  let response: Response;
+  try {
+    response = await fetch(url, { mode: "cors", credentials: "omit" });
+  } catch {
+    throw new Error("Não foi possível carregar a imagem atual para edição.");
+  }
+  if (!response.ok) {
+    throw new Error("Não foi possível carregar a imagem atual para edição.");
+  }
+
+  const blob = await response.blob();
+  const mime = blob.type || "image/jpeg";
+  const extension = mime.split("/")[1]?.split("+")[0] || "jpg";
+  const baseName = fileName.replace(/\.[^.]+$/, "") || "imagem";
+
+  return new File([blob], `${baseName}.${extension}`, {
+    type: mime,
+    lastModified: Date.now(),
+  });
+}
+
+/**
  * Aplica rotação + recorte e devolve um File pronto para upload.
  * `crop` usa coordenadas em pixels da imagem original (formato do react-easy-crop).
  */

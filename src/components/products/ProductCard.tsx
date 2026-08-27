@@ -32,7 +32,7 @@ export function ProductCard({ product }: ProductCardProps) {
             <img
               src={src}
               alt={product.name}
-              className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+              className="absolute inset-0 h-full w-full object-contain p-2 transition duration-300 group-hover:scale-[1.02]"
               onError={() => setImgError(true)}
             />
           ) : (
@@ -40,7 +40,7 @@ export function ProductCard({ product }: ProductCardProps) {
               src={src}
               alt={product.name}
               fill
-              className="object-cover transition duration-300 group-hover:scale-[1.02]"
+              className="object-contain p-2 transition duration-300 group-hover:scale-[1.02]"
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
               onError={() => setImgError(true)}
             />

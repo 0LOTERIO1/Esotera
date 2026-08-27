@@ -31,7 +31,7 @@ export async function fileToCompressedDataUrl(file: File): Promise<string> {
   }
 
   const bitmap = await createImageBitmap(file);
-  const maxSide = 1200;
+  const maxSide = 1600;
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
   const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -47,7 +47,7 @@ export async function fileToCompressedDataUrl(file: File): Promise<string> {
   bitmap.close();
 
   const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
-  const quality = mime === "image/jpeg" ? 0.82 : undefined;
+  const quality = mime === "image/jpeg" ? 0.9 : undefined;
   const dataUrl = canvas.toDataURL(mime, quality);
 
   // Estimativa aproximada do tamanho em bytes do Base64

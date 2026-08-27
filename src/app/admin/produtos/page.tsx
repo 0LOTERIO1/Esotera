@@ -7,6 +7,7 @@ import { FormField, inputClassName } from "@/components/ui/FormField";
 import { ProductThumbnail } from "@/components/products/ProductThumbnail";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { ProductImageManager } from "@/components/admin/products/ProductImageManager";
+import { ImageEditor } from "@/components/admin/ImageEditor";
 import { useToastStore } from "@/stores/toastStore";
 import { useProductsStore } from "@/stores/productsStore";
 import {
@@ -118,6 +119,7 @@ export default function AdminProductsPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -208,6 +210,7 @@ export default function AdminProductsPage() {
     });
     setImagePreview(null);
     setImageFile(null);
+    setPendingImage(null);
     setImageError(null);
     setFormErrors({});
     setDetailImages([]);
@@ -251,7 +254,8 @@ export default function AdminProductsPage() {
     }
   }
 
-  async function onFileChange(file: File | null) {
+  /** Abre o editor de enquadramento; nada é enviado antes da confirmação. */
+  function onFileChange(file: File | null) {
     setImageError(null);
     if (!file) return;
     const validation = validateProductImage(file);
@@ -260,10 +264,15 @@ export default function AdminProductsPage() {
       setImageFile(null);
       return;
     }
+    setPendingImage(file);
+  }
+
+  async function onImageConfirmed(edited: File) {
+    setPendingImage(null);
     try {
-      const dataUrl = await fileToCompressedDataUrl(file);
+      const dataUrl = await fileToCompressedDataUrl(edited);
       setImagePreview(dataUrl);
-      setImageFile(file);
+      setImageFile(edited);
     } catch (err) {
       setImageError(err instanceof Error ? err.message : "Falha ao processar imagem.");
       setImageFile(null);
@@ -741,12 +750,16 @@ export default function AdminProductsPage() {
                   </p>
                   <p className="text-xs text-esotera-muted">
                     PNG, JPG ou WebP · máximo {(MAX_IMAGE_BYTES / (1024 * 1024)).toFixed(0)} MB.
+                    Após escolher o arquivo você poderá ajustar o enquadramento.
                   </p>
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     className="block w-full text-sm text-esotera-muted file:mr-3 file:rounded-md file:border-0 file:bg-esotera-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
-                    onChange={(e) => void onFileChange(e.target.files?.[0] ?? null)}
+                    onChange={(e) => {
+                      onFileChange(e.target.files?.[0] ?? null);
+                      e.target.value = "";
+                    }}
                   />
                   {imageError || formErrors.image ? (
                     <p role="alert" className="text-xs text-esotera-error">
@@ -754,10 +767,17 @@ export default function AdminProductsPage() {
                     </p>
                   ) : null}
                   {imagePreview ? (
-                    <div className="relative mt-2 aspect-square w-40 overflow-hidden rounded-lg border border-esotera-border">
+                    <div className="relative mt-2 aspect-square w-40 overflow-hidden rounded-lg border border-esotera-border bg-esotera-surface-secondary">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={imagePreview} alt="Pré-visualização" className="h-full w-full object-cover" />
+                      <img src={imagePreview} alt="Pré-visualização" className="h-full w-full object-contain" />
                     </div>
+                  ) : null}
+                  {pendingImage ? (
+                    <ImageEditor
+                      file={pendingImage}
+                      onCancel={() => setPendingImage(null)}
+                      onConfirm={(edited) => void onImageConfirmed(edited)}
+                    />
                   ) : null}
                 </div>
               ) : null}

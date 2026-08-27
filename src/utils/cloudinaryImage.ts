@@ -7,11 +7,15 @@ const CLOUDINARY_HOST = "res.cloudinary.com";
 
 export type CloudinaryImageSize = "thumb" | "card" | "detail" | "full";
 
+/**
+ * `c_limit` mantém o produto inteiro (sem corte) nos tamanhos exibidos grandes;
+ * miniaturas seguem com `c_fill` porque o corte quadrado ali é intencional.
+ */
 const SIZE_TRANSFORMS: Record<CloudinaryImageSize, string> = {
-  thumb: "c_fill,w_120,h_120,f_auto,q_auto",
-  card: "c_fill,w_480,h_480,f_auto,q_auto",
-  detail: "c_limit,w_900,h_900,f_auto,q_auto",
-  full: "f_auto,q_auto",
+  thumb: "c_fill,w_160,h_160,f_auto,q_auto:good",
+  card: "c_limit,w_700,h_700,f_auto,q_auto:good",
+  detail: "c_limit,w_1400,h_1400,f_auto,q_auto:good",
+  full: "f_auto,q_auto:good",
 };
 
 export function isCloudinaryUrl(url: string): boolean {

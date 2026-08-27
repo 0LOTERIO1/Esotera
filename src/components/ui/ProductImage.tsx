@@ -16,6 +16,8 @@ type ProductImageProps = {
   className?: string;
   sizes?: string;
   priority?: boolean;
+  /** `contain` mostra o produto inteiro; `cover` preenche o espaço. */
+  objectFit?: "cover" | "contain";
 };
 
 /**
@@ -31,7 +33,9 @@ export function ProductImage({
   className = "",
   sizes,
   priority,
+  objectFit = "cover",
 }: ProductImageProps) {
+  const fitClass = objectFit === "contain" ? "object-contain" : "object-cover";
   const normalized = normalizeProductImageUrl(src);
   const [failedFor, setFailedFor] = useState<string | null>(null);
   const broken = failedFor === normalized;
@@ -52,7 +56,7 @@ export function ProductImage({
         <img
           src={resolved}
           alt={alt}
-          className={`absolute inset-0 h-full w-full object-cover ${className}`}
+          className={`absolute inset-0 h-full w-full ${fitClass} ${className}`}
           loading={priority ? "eager" : "lazy"}
           decoding="async"
           onError={handleError}
@@ -67,7 +71,7 @@ export function ProductImage({
         alt={alt}
         width={width ?? 400}
         height={height ?? 500}
-        className={`object-cover ${className}`}
+        className={`${fitClass} ${className}`}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         onError={handleError}
@@ -81,7 +85,7 @@ export function ProductImage({
         src={resolved}
         alt={alt}
         fill
-        className={`object-cover ${className}`}
+        className={`${fitClass} ${className}`}
         sizes={sizes}
         priority={priority}
         onError={handleError}
@@ -95,7 +99,7 @@ export function ProductImage({
       alt={alt}
       width={width ?? 400}
       height={height ?? 500}
-      className={`object-cover ${className}`}
+      className={`${fitClass} ${className}`}
       sizes={sizes}
       priority={priority}
       onError={handleError}

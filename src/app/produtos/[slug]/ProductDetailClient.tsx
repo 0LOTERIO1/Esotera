@@ -113,7 +113,8 @@ export function ProductDetailClient({
               src={product.images[activeImage] ?? product.images[0]}
               alt={product.name}
               fill
-              className="object-cover"
+              objectFit="contain"
+              className="p-2"
               sizes="(max-width: 1024px) 100vw, 50vw"
               priority
             />

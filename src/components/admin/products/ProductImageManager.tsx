@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormField, inputClassName } from "@/components/ui/FormField";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { ImageEditor } from "@/components/admin/ImageEditor";
 import { ProductThumbnail } from "@/components/products/ProductThumbnail";
 import {
   MAX_IMAGE_BYTES,
@@ -39,8 +40,12 @@ export function ProductImageManager({
   const [error, setError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [altDrafts, setAltDrafts] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<{ file: File; isPrimary: boolean } | null>(
+    null,
+  );
 
-  async function handleFile(file: File | null, isPrimary: boolean) {
+  /** Abre o editor; o upload só acontece após confirmação do enquadramento. */
+  function selectFile(file: File | null, isPrimary: boolean) {
     if (!file) return;
     const validation = validateProductImage(file);
     if (validation) {
@@ -48,6 +53,11 @@ export function ProductImageManager({
       return;
     }
     setError(null);
+    setPending({ file, isPrimary });
+  }
+
+  async function uploadEdited(file: File, isPrimary: boolean) {
+    setPending(null);
     setUploading(true);
     try {
       await onUpload(file, isPrimary);
@@ -90,7 +100,7 @@ export function ProductImageManager({
             className="block w-full max-w-xs text-sm text-esotera-muted file:mr-3 file:rounded-md file:border-0 file:bg-esotera-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
             disabled={busy || uploading}
             onChange={(e) => {
-              void handleFile(e.target.files?.[0] ?? null, true);
+              selectFile(e.target.files?.[0] ?? null, true);
               e.target.value = "";
             }}
           />
@@ -103,7 +113,7 @@ export function ProductImageManager({
             className="block w-full max-w-xs text-sm text-esotera-muted file:mr-3 file:rounded-md file:border-0 file:bg-esotera-surface-secondary file:px-3 file:py-2 file:text-sm file:font-medium file:text-esotera-secondary"
             disabled={busy || uploading}
             onChange={(e) => {
-              void handleFile(e.target.files?.[0] ?? null, false);
+              selectFile(e.target.files?.[0] ?? null, false);
               e.target.value = "";
             }}
           />
@@ -204,6 +214,14 @@ export function ProductImageManager({
           ))}
         </ul>
       )}
+
+      {pending ? (
+        <ImageEditor
+          file={pending.file}
+          onCancel={() => setPending(null)}
+          onConfirm={(edited) => void uploadEdited(edited, pending.isPrimary)}
+        />
+      ) : null}
 
       <ConfirmModal
         open={Boolean(deleteId)}

@@ -30,7 +30,8 @@ export function FeaturedProduct() {
             src={product.images[0]}
             alt={product.name}
             fill
-            className="object-cover"
+            objectFit="contain"
+            className="p-3"
             sizes="(max-width: 768px) 100vw, 50vw"
             priority
           />

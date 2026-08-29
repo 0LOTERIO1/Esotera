@@ -10,7 +10,6 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useCartTotals } from "@/hooks/useCartTotals";
 import { OrderSummary } from "@/components/cart/OrderSummary";
 import { ShippingOptions } from "@/components/checkout/ShippingOptions";
-import { PaymentOptions } from "@/components/checkout/PaymentOptions";
 import { CheckoutAddressStep } from "@/components/checkout/CheckoutAddressStep";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -39,9 +38,15 @@ const steps = [
   "Identificação",
   "Endereço",
   "Entrega",
-  "Pagamento",
   "Revisão",
 ] as const;
+
+/**
+ * O meio de pagamento real é escolhido no Payment Brick (Pix, crédito, débito
+ * ou boleto) e o backend sobrescreve Order.PaymentMethod conforme a escolha.
+ * Aqui só satisfazemos o contrato de criação do pedido.
+ */
+const DEFAULT_PAYMENT_METHOD: PaymentMethod = "pix";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -70,8 +75,6 @@ export default function CheckoutPage() {
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingError, setShippingError] = useState<string | null>(null);
   const [shippingQuoteKey, setShippingQuoteKey] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
-  const [installments, setInstallments] = useState(1);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [uncertainResult, setUncertainResult] = useState(false);
@@ -274,8 +277,7 @@ export default function CheckoutPage() {
         variation: l.variation,
       })),
       shippingMethodId: selectedShipping.id,
-      paymentMethod,
-      installments: paymentMethod === "card" ? installments : undefined,
+      paymentMethod: DEFAULT_PAYMENT_METHOD,
       couponCode: coupon?.code,
     };
     const fingerprint = fingerprintOrderAttempt(attempt);
@@ -324,8 +326,7 @@ export default function CheckoutPage() {
         shippingOption: selectedShipping,
         address: addressForOrder,
         addressId: selectedAddress.id,
-        paymentMethod,
-        installments: paymentMethod === "card" ? installments : undefined,
+        paymentMethod: DEFAULT_PAYMENT_METHOD,
         idempotencyKey: idempotencyKeyRef.current ?? undefined,
       });
 
@@ -399,7 +400,8 @@ export default function CheckoutPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="font-serif text-4xl text-esotera-secondary">Checkout</h1>
       <p className="mt-2 text-sm text-esotera-muted">
-        Confirme endereço, frete e forma de pagamento para concluir seu pedido.
+        Confirme endereço e frete. O pagamento é feito na etapa seguinte, no
+        ambiente seguro do Mercado Pago.
       </p>
 
       <ol className="mt-6 flex flex-wrap gap-2" aria-label="Etapas do checkout">
@@ -480,21 +482,6 @@ export default function CheckoutPage() {
           ) : null}
 
           {step === 3 ? (
-            <div>
-              <h2 className="mb-4 font-serif text-2xl text-esotera-text">
-                Pagamento
-              </h2>
-              <PaymentOptions
-                method={paymentMethod}
-                installments={installments}
-                total={productsTotal + shippingPrice}
-                onMethodChange={setPaymentMethod}
-                onInstallmentsChange={setInstallments}
-              />
-            </div>
-          ) : null}
-
-          {step === 4 ? (
             <div className="space-y-4 text-sm text-esotera-muted">
               <h2 className="font-serif text-2xl text-esotera-text">Revisão</h2>
               <ul className="space-y-3">
@@ -538,12 +525,8 @@ export default function CheckoutPage() {
                 </p>
               ) : null}
               <p>
-                Pagamento:{" "}
-                {paymentMethod === "pix"
-                  ? "Pix"
-                  : paymentMethod === "boleto"
-                    ? "Boleto"
-                    : `Cartão em ${installments}x`}
+                Pagamento: você escolhe entre Pix, cartão ou boleto na próxima
+                etapa, no ambiente seguro do Mercado Pago.
               </p>
             </div>
           ) : null}

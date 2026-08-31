@@ -1,10 +1,23 @@
 namespace Esotera.Application.Interfaces;
 
-/// <summary>Cliente HTTP para POST /api/v2/me/shipment/calculate (sandbox).</summary>
+/// <summary>
+/// Cliente HTTP do Melhor Envio. Superfície deliberadamente mínima:
+/// cotação (POST /me/shipment/calculate) e inserção no carrinho (POST /me/cart).
+/// NÃO existe método de checkout/compra, generate ou print — a ausência é a garantia.
+/// </summary>
 public interface IMelhorEnvioShipmentClient
 {
     Task<MelhorEnvioCalculateOutcome> CalculateAsync(
         MelhorEnvioCalculateRequest request,
+        string accessToken,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Insere o frete no carrinho. Operação sem custo: não debita a carteira
+    /// e não gera etiqueta. Exige o escopo cart-write.
+    /// </summary>
+    Task<MelhorEnvioCartOutcome> CreateCartItemAsync(
+        MelhorEnvioCartRequest request,
         string accessToken,
         CancellationToken cancellationToken = default);
 }

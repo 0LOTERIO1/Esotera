@@ -1,4 +1,5 @@
 using Esotera.Application.Interfaces;
+using Esotera.Application.Options;
 using Esotera.Domain.Entities;
 using Esotera.Infrastructure.Persistence;
 using Esotera.Infrastructure.Services;
@@ -50,7 +51,7 @@ internal static class ShippingTestHelpers
             RefreshTokenExpiresAtUtc = now.AddDays(40),
             ConnectedAtUtc = now,
             UpdatedAtUtc = now,
-            Scopes = "shipping-calculate",
+            Scopes = MelhorEnvioOptions.RequestedScopes,
             Environment = "sandbox"
         });
         await db.SaveChangesAsync();

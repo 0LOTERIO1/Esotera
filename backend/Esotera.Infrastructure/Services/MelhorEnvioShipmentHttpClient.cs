@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Esotera.Application.Interfaces;
 using Esotera.Application.Options;
+using Esotera.Application.Shipping;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -121,6 +123,252 @@ public sealed class MelhorEnvioShipmentHttpClient : IMelhorEnvioShipmentClient
                 return new MelhorEnvioCalculateOutcome { Ok = false };
             }
         }
+    }
+
+    public async Task<MelhorEnvioCartOutcome> CreateCartItemAsync(
+        MelhorEnvioCartRequest request,
+        string accessToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.UserAgent))
+        {
+            _logger.LogWarning("Melhor Envio cart: User-Agent ausente");
+            return Fail(MelhorEnvioShipmentErrorCodes.NotConfigured, "User-Agent não configurado.");
+        }
+
+        if (!_options.HasValidBaseUrl)
+        {
+            _logger.LogWarning("Melhor Envio cart: base URL inválida");
+            return Fail(MelhorEnvioShipmentErrorCodes.NotConfigured, "Base URL inválida.");
+        }
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.CartUrl);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        httpRequest.Headers.TryAddWithoutValidation("User-Agent", _options.UserAgent.Trim());
+
+        httpRequest.Content = new StringContent(
+            JsonSerializer.Serialize(BuildCartBody(request)),
+            Encoding.UTF8,
+            "application/json");
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning("Melhor Envio cart: timeout");
+            return new MelhorEnvioCartOutcome
+            {
+                TimedOut = true,
+                ErrorCode = MelhorEnvioShipmentErrorCodes.Timeout,
+                ErrorMessage = "Tempo esgotado ao inserir no carrinho. Resultado desconhecido."
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Melhor Envio cart: erro de rede");
+            return new MelhorEnvioCartOutcome
+            {
+                NetworkError = true,
+                ErrorCode = MelhorEnvioShipmentErrorCodes.NetworkError,
+                ErrorMessage = "Falha de rede ao contatar o Melhor Envio."
+            };
+        }
+
+        using (response)
+        {
+            var statusCode = (int)response.StatusCode;
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _logger.LogInformation("Melhor Envio cart: 401 Unauthenticated");
+                return new MelhorEnvioCartOutcome
+                {
+                    Unauthenticated = true,
+                    ErrorCode = MelhorEnvioShipmentErrorCodes.Unauthenticated,
+                    ErrorMessage = "Token recusado pelo Melhor Envio."
+                };
+            }
+
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                // Token válido, permissão ausente — tipicamente falta cart-write.
+                _logger.LogWarning("Melhor Envio cart: 403 Forbidden (provável escopo ausente)");
+                return new MelhorEnvioCartOutcome
+                {
+                    Forbidden = true,
+                    ErrorCode = MelhorEnvioShipmentErrorCodes.Forbidden,
+                    ErrorMessage =
+                        "Reautorize o Melhor Envio com os novos escopos antes de criar envio."
+                };
+            }
+
+            // Corpo lido só para extrair mensagem de validação — nunca logado inteiro.
+            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var isValidation = statusCode is >= 400 and < 500;
+                _logger.LogWarning("Melhor Envio cart: HTTP {StatusCode}", statusCode);
+                return new MelhorEnvioCartOutcome
+                {
+                    ValidationRejected = isValidation,
+                    ErrorCode = isValidation
+                        ? MelhorEnvioShipmentErrorCodes.ValidationRejected
+                        : MelhorEnvioShipmentErrorCodes.Http(statusCode),
+                    ErrorMessage = MelhorEnvioShipmentErrorCodes.SanitizeMessage(
+                        ExtractErrorMessage(raw) ?? $"Melhor Envio respondeu HTTP {statusCode}.")
+                };
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                var id = ReadString(doc.RootElement, "id");
+                var protocol = ReadString(doc.RootElement, "protocol");
+
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    _logger.LogWarning("Melhor Envio cart: resposta 2xx sem id");
+                    return Fail(
+                        MelhorEnvioShipmentErrorCodes.ResponseWithoutId,
+                        "Melhor Envio respondeu sem o id do envio. Verifique o painel antes de repetir.");
+                }
+
+                _logger.LogInformation(
+                    "Melhor Envio cart: envio inserido no carrinho (protocol={Protocol})",
+                    protocol);
+
+                return new MelhorEnvioCartOutcome
+                {
+                    Ok = true,
+                    ShipmentId = id,
+                    Protocol = protocol
+                };
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Melhor Envio cart: JSON inválido");
+                return Fail(
+                    MelhorEnvioShipmentErrorCodes.InvalidJson,
+                    "Resposta ilegível do Melhor Envio. Verifique o painel antes de repetir.");
+            }
+        }
+    }
+
+    private static MelhorEnvioCartOutcome Fail(string code, string message) =>
+        new() { ErrorCode = code, ErrorMessage = message };
+
+    /// <summary>Serializa no formato snake_case exigido pela API.</summary>
+    internal static object BuildCartBody(MelhorEnvioCartRequest r) => new
+    {
+        service = r.Service,
+        from = BuildParty(r.From),
+        to = BuildParty(r.To),
+        products = r.Products.Select(p => new
+        {
+            name = p.Name,
+            quantity = p.Quantity.ToString(CultureInfo.InvariantCulture),
+            unitary_value = p.UnitaryValue
+        }).ToArray(),
+        volumes = r.Volumes.Select(v => new
+        {
+            height = v.HeightCm,
+            width = v.WidthCm,
+            length = v.LengthCm,
+            weight = v.WeightKg
+        }).ToArray(),
+        options = new
+        {
+            platform = r.Options.Platform,
+            reminder = r.Options.Reminder,
+            insurance_value = r.Options.InsuranceValue,
+            receipt = r.Options.Receipt,
+            own_hand = r.Options.OwnHand,
+            reverse = r.Options.Reverse,
+            non_commercial = r.Options.NonCommercial,
+            invoice = string.IsNullOrWhiteSpace(r.Options.InvoiceKey)
+                ? null
+                : new { key = r.Options.InvoiceKey },
+            tags = string.IsNullOrWhiteSpace(r.Options.OrderTag)
+                ? null
+                : new[] { new { tag = r.Options.OrderTag, url = (string?)null } }
+        }
+    };
+
+    private static object BuildParty(MelhorEnvioCartParty p) => new
+    {
+        name = p.Name,
+        email = p.Email,
+        phone = p.Phone,
+        document = p.Document,
+        company_document = p.CompanyDocument,
+        state_register = p.StateRegister,
+        economic_activity_code = p.EconomicActivityCode,
+        address = p.Address,
+        complement = p.Complement,
+        number = p.Number,
+        district = p.District,
+        city = p.City,
+        postal_code = p.PostalCode,
+        state_abbr = p.StateAbbr,
+        country_id = p.CountryId
+    };
+
+    /// <summary>Extrai mensagem de erro sem devolver o payload inteiro.</summary>
+    internal static string? ExtractErrorMessage(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (root.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String)
+            {
+                var message = msg.GetString();
+                var firstError = FirstValidationError(root);
+                return firstError is null ? message : $"{message} ({firstError})";
+            }
+
+            return FirstValidationError(root);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? FirstValidationError(JsonElement root)
+    {
+        if (!root.TryGetProperty("errors", out var errors) || errors.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var prop in errors.EnumerateObject())
+        {
+            if (prop.Value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in prop.Value.EnumerateArray())
+                {
+                    if (entry.ValueKind == JsonValueKind.String)
+                        return $"{prop.Name}: {entry.GetString()}";
+                }
+            }
+            else if (prop.Value.ValueKind == JsonValueKind.String)
+            {
+                return $"{prop.Name}: {prop.Value.GetString()}";
+            }
+        }
+
+        return null;
     }
 
     internal static IReadOnlyList<MelhorEnvioRawServiceQuote> ParseServices(JsonElement root)

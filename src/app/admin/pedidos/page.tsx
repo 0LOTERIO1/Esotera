@@ -82,6 +82,7 @@ export default function AdminOrdersPage() {
   const [fiscalXmlFile, setFiscalXmlFile] = useState<File | null>(null);
   const [sendingJ3, setSendingJ3] = useState(false);
   const [preparingMelhorEnvio, setPreparingMelhorEnvio] = useState(false);
+  const [creatingMelhorEnvioCart, setCreatingMelhorEnvioCart] = useState(false);
   const fiscalXmlInputRef = useRef<HTMLInputElement>(null);
 
   function clearFiscalXmlSelection() {
@@ -222,6 +223,40 @@ export default function AdminOrdersPage() {
       );
     } finally {
       setImportingFiscal(false);
+    }
+  }
+
+  /**
+   * Insere o frete no carrinho do Melhor Envio. Não compra etiqueta.
+   * O servidor revalida pagamento, NF-e e escopos e devolve 409 com o motivo.
+   */
+  async function createMelhorEnvioCartShipment() {
+    if (!selected || creatingMelhorEnvioCart) return;
+    setCreatingMelhorEnvioCart(true);
+    try {
+      const updated = await adminApi.createMelhorEnvioCartShipment(selected.id);
+      setSelected(updated);
+      push(
+        "success",
+        `Envio criado no carrinho do Melhor Envio: ${melhorEnvioStatusLabel(
+          updated.melhorEnvio?.status ?? "",
+        )}`,
+      );
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError
+          ? err.detail || err.userMessage
+          : "Não foi possível criar o envio no Melhor Envio.",
+      );
+      // Mesmo em falha o registro local muda (erro/status): recarrega o detalhe.
+      try {
+        setSelected(await adminApi.getOrder(selected.id));
+      } catch {
+        // Detalhe indisponível: o painel continua com o estado anterior.
+      }
+    } finally {
+      setCreatingMelhorEnvioCart(false);
     }
   }
 
@@ -615,6 +650,12 @@ export default function AdminOrdersPage() {
                           </a>
                         </div>
                       ) : null}
+                      {selected.melhorEnvio.cartCreatedAtUtc ? (
+                        <div>
+                          Criado no carrinho:{" "}
+                          {formatDate(selected.melhorEnvio.cartCreatedAtUtc)}
+                        </div>
+                      ) : null}
                       {selected.melhorEnvio.lastSyncErrorMessage ? (
                         <div className="text-esotera-secondary">
                           Último erro:{" "}
@@ -646,6 +687,26 @@ export default function AdminOrdersPage() {
                       compra etiqueta e não chama o Melhor Envio.
                     </p>
                   </div>
+                  {selected.melhorEnvio?.status === "ready_to_create" ? (
+                    <div className="mt-4 border-t border-esotera-border/70 pt-3">
+                      <Button
+                        type="button"
+                        onClick={() => void createMelhorEnvioCartShipment()}
+                        disabled={creatingMelhorEnvioCart}
+                      >
+                        {creatingMelhorEnvioCart
+                          ? "Criando envio…"
+                          : "Criar envio no Melhor Envio"}
+                      </Button>
+                      <p className="mt-2 text-xs text-esotera-muted">
+                        Insere o frete no carrinho do Melhor Envio usando o
+                        serviço escolhido no checkout e a chave da NF-e
+                        autorizada. Não compra etiqueta, não gera etiqueta e não
+                        debita a carteira — a compra continua manual no painel
+                        do Melhor Envio.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

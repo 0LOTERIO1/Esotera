@@ -26,6 +26,7 @@ public sealed class MelhorEnvioDiagnosticsService : IMelhorEnvioDiagnosticsServi
     private readonly IMelhorEnvioShipmentClient _shipmentClient;
     private readonly IIntegrationsEncryptionService _encryption;
     private readonly MelhorEnvioOptions _options;
+    private readonly MelhorEnvioSenderOptions _sender;
     private readonly ILogger<MelhorEnvioDiagnosticsService> _logger;
 
     public MelhorEnvioDiagnosticsService(
@@ -34,8 +35,10 @@ public sealed class MelhorEnvioDiagnosticsService : IMelhorEnvioDiagnosticsServi
         IMelhorEnvioShipmentClient shipmentClient,
         IIntegrationsEncryptionService encryption,
         IOptions<MelhorEnvioOptions> options,
+        IOptions<MelhorEnvioSenderOptions> sender,
         ILogger<MelhorEnvioDiagnosticsService> logger)
     {
+        _sender = sender.Value;
         _db = db;
         _oauth = oauth;
         _shipmentClient = shipmentClient;
@@ -55,6 +58,12 @@ public sealed class MelhorEnvioDiagnosticsService : IMelhorEnvioDiagnosticsServi
             .AnyAsync(c => c.AccessTokenCipher != null && c.AccessTokenCipher != "", cancellationToken);
 
         var configured = _options.IsOAuthConfigured && _encryption.IsConfigured;
+        // NeedsReauthorization agrega escopo; aqui é preciso distinguir "token morto"
+        // de "falta escopo novo", porque só o primeiro impede a cotação.
+        var refreshExpired = status.Connected
+            && !status.EnvironmentMismatch
+            && status.NeedsReauthorization
+            && !status.ScopeMismatch;
         bool? canAuthenticate = null;
         string message;
 
@@ -82,20 +91,35 @@ public sealed class MelhorEnvioDiagnosticsService : IMelhorEnvioDiagnosticsServi
                 $"A conexão salva é do ambiente '{status.Environment}', mas o configurado é " +
                 $"'{_options.NormalizedEnvironment}'. Reautorize antes de usar.";
         }
-        else if (status.NeedsReauthorization)
+        else if (refreshExpired)
         {
             message = "Refresh token expirado. Reautorize a conexão.";
+        }
+        else if (status.ScopeMismatch)
+        {
+            message =
+                "Conectado, mas sem os escopos atuais (" +
+                string.Join(", ", status.MissingScopes ?? []) +
+                "). A cotação continua funcionando; criar envio no carrinho exige reautorizar.";
+        }
+        else if (!_sender.IsCompleteForCommercialShipping)
+        {
+            message =
+                "Conectado. Remetente incompleto para envio comercial — configure no servidor: "
+                + string.Join(", ", _sender.MissingCommercialFields())
+                + ".";
         }
         else
         {
             message = "Conectado.";
         }
 
+        // Escopo ausente não impede a sonda: ela só cota, e cotação usa shipping-calculate.
         var canProbe = probe
             && configured
             && status.Connected
             && !status.EnvironmentMismatch
-            && !status.NeedsReauthorization;
+            && !refreshExpired;
 
         if (probe && !canProbe)
         {
@@ -115,7 +139,10 @@ public sealed class MelhorEnvioDiagnosticsService : IMelhorEnvioDiagnosticsServi
             TokenPresent: tokenPresent,
             CanAuthenticate: canAuthenticate,
             Message: message,
-            Connection: status);
+            Connection: status,
+            SenderConfigured: _sender.IsCompleteForCommercialShipping,
+            SenderMissingFields: _sender.MissingCommercialFields(),
+            AutoCreateCartShipment: _options.AutoCreateCartShipment);
     }
 
     private async Task<(bool Ok, string Message)> ProbeAsync(CancellationToken cancellationToken)

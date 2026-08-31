@@ -26,6 +26,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IJ3TrackingSyncService _j3TrackingSync;
     private readonly IJ3IdentifierHydrationService _j3IdentifierHydration;
     private readonly IMelhorEnvioShipmentLocalService _melhorEnvioShipment;
+    private readonly IMelhorEnvioShipmentProcessingService _melhorEnvioCart;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -40,6 +41,7 @@ public class AdminOrdersController : ControllerBase
         IJ3TrackingSyncService j3TrackingSync,
         IJ3IdentifierHydrationService j3IdentifierHydration,
         IMelhorEnvioShipmentLocalService melhorEnvioShipment,
+        IMelhorEnvioShipmentProcessingService melhorEnvioCart,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
@@ -53,6 +55,7 @@ public class AdminOrdersController : ControllerBase
         _j3TrackingSync = j3TrackingSync;
         _j3IdentifierHydration = j3IdentifierHydration;
         _melhorEnvioShipment = melhorEnvioShipment;
+        _melhorEnvioCart = melhorEnvioCart;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -104,6 +107,48 @@ public class AdminOrdersController : ControllerBase
 
         var updated = await _adminQueries.GetOrderAsync(id);
         return updated == null ? NotFound() : Ok(updated);
+    }
+
+    /// <summary>
+    /// Insere o frete no CARRINHO do Melhor Envio (Fase C1).
+    /// Não compra etiqueta, não gera etiqueta e não imprime etiqueta.
+    /// </summary>
+    [HttpPost("{id:guid}/melhor-envio/create-cart-shipment")]
+    public async Task<ActionResult<AdminOrderDetailDto>> CreateMelhorEnvioCartShipment(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var order = await _adminQueries.GetOrderAsync(id);
+        if (order == null)
+            return NotFound();
+
+        if (!Domain.Enums.ShippingMethod.IsMelhorEnvio(order.Shipping.MethodId))
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Frete não é Melhor Envio",
+                Detail = "Este pedido não usa entrega Melhor Envio.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        var result = await _melhorEnvioCart.CreateCartShipmentAsync(id, cancellationToken);
+        var updated = await _adminQueries.GetOrderAsync(id);
+        if (updated == null)
+            return NotFound();
+
+        if (!result.Ok)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Não foi possível criar o envio no Melhor Envio",
+                Detail = result.ErrorMessage,
+                Status = StatusCodes.Status409Conflict,
+                Extensions = { ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        return Ok(updated);
     }
 
     /// <summary>Download .xlsx no layout oficial UpSeller (aba order_). Sem HTTP externo.</summary>

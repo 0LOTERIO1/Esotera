@@ -5,11 +5,13 @@ using Esotera.Application.Common;
 using Esotera.Application.DTOs.Fiscal;
 using Esotera.Application.Exceptions;
 using Esotera.Application.Interfaces;
+using Esotera.Application.Options;
 using Esotera.Domain.Entities;
 using Esotera.Domain.Enums;
 using Esotera.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Esotera.Infrastructure.Services;
 
@@ -32,6 +34,8 @@ public sealed class FiscalInvoiceImportService : IFiscalInvoiceImportService
     private readonly IFiscalInvoiceXmlParser _parser;
     private readonly IIntegrationsEncryptionService _encryption;
     private readonly IMelhorEnvioShipmentLocalService _melhorEnvioShipment;
+    private readonly IMelhorEnvioShipmentProcessingService _cartProcessing;
+    private readonly MelhorEnvioOptions _melhorEnvioOptions;
     private readonly ILogger<FiscalInvoiceImportService> _logger;
 
     public FiscalInvoiceImportService(
@@ -39,12 +43,16 @@ public sealed class FiscalInvoiceImportService : IFiscalInvoiceImportService
         IFiscalInvoiceXmlParser parser,
         IIntegrationsEncryptionService encryption,
         IMelhorEnvioShipmentLocalService melhorEnvioShipment,
+        IMelhorEnvioShipmentProcessingService cartProcessing,
+        IOptions<MelhorEnvioOptions> melhorEnvioOptions,
         ILogger<FiscalInvoiceImportService> logger)
     {
         _db = db;
         _parser = parser;
         _encryption = encryption;
         _melhorEnvioShipment = melhorEnvioShipment;
+        _cartProcessing = cartProcessing;
+        _melhorEnvioOptions = melhorEnvioOptions.Value;
         _logger = logger;
     }
 
@@ -150,12 +158,50 @@ public sealed class FiscalInvoiceImportService : IFiscalInvoiceImportService
             status,
             shaHex[..Math.Min(8, shaHex.Length)]);
 
-        // NF-e autorizada libera o envio Melhor Envio para criação. Zero HTTP aqui:
-        // só promove o registro local waiting_invoice → ready_to_create.
+        // NF-e autorizada libera o envio Melhor Envio para criação: promove o registro
+        // local waiting_invoice → ready_to_create.
         if (status == FiscalInvoiceStatus.Authorized)
+        {
             await _melhorEnvioShipment.SyncInvoiceReadinessAsync(orderId, cancellationToken);
+            await TryAutoCreateCartShipmentAsync(orderId, cancellationToken);
+        }
 
         return ToResult(entity, idempotent: false);
+    }
+
+    /// <summary>
+    /// Insere o frete no carrinho do Melhor Envio logo após a NF-e ser autorizada,
+    /// SOMENTE se MELHOR_ENVIO_AUTO_CREATE_CART_SHIPMENT=true (default false).
+    /// Nunca compra etiqueta. Falha aqui não derruba a importação da NF-e: o erro
+    /// fica registrado no shipment e o Admin oferece o botão manual.
+    /// </summary>
+    private async Task TryAutoCreateCartShipmentAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        if (!_melhorEnvioOptions.AutoCreateCartShipment)
+            return;
+
+        try
+        {
+            var result = await _cartProcessing.CreateCartShipmentAsync(orderId, cancellationToken);
+            if (!result.Ok)
+            {
+                _logger.LogInformation(
+                    "Melhor Envio auto-cart: pedido {OrderId} não criado (code={Code})",
+                    orderId,
+                    result.ErrorCode);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Melhor Envio auto-cart: falha inesperada no pedido {OrderId}",
+                orderId);
+        }
     }
 
     /// <summary>Tolerância monetária explícita (documento + total fallback).</summary>

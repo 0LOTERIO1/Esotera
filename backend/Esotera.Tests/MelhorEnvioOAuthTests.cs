@@ -124,7 +124,7 @@ public class MelhorEnvioOAuthTests : IClassFixture<CustomWebApplicationFactory>
         conn.AccessTokenCipher.Should().NotContain(fake.LastAccessToken);
         conn.RefreshTokenCipher.Should().NotContain(fake.LastRefreshToken);
         conn.AccessTokenCipher.Should().NotContain("fake-access");
-        conn.Scopes.Should().Be("shipping-calculate");
+        conn.Scopes.Should().Be("shipping-calculate cart-write");
         conn.Environment.Should().Be("sandbox");
 
         enc.Decrypt(conn.AccessTokenCipher).Should().Be(fake.LastAccessToken);
@@ -288,7 +288,8 @@ public class MelhorEnvioOAuthTests : IClassFixture<CustomWebApplicationFactory>
         var status = JsonSerializer.Deserialize<MelhorEnvioStatusDto>(raw, JsonOptions);
         status!.Connected.Should().BeTrue();
         status.AccessTokenValid.Should().BeTrue();
-        status.Scopes.Should().Be("shipping-calculate");
+        status.Scopes.Should().Be("shipping-calculate cart-write");
+        status.ScopeMismatch.Should().BeFalse();
     }
 
     [Fact]

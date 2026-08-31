@@ -15,7 +15,39 @@ public class MelhorEnvioOptions
     public const string SandboxAuthorizeUrl = $"{SandboxBaseUrl}/oauth/authorize";
     public const string SandboxTokenUrl = $"{SandboxBaseUrl}/oauth/token";
     public const string SandboxCalculateUrl = $"{SandboxBaseUrl}/api/v2/me/shipment/calculate";
+    /// <summary>Escopo da cotação. Sozinho NÃO permite carrinho nem compra.</summary>
     public const string RequiredScope = "shipping-calculate";
+
+    /// <summary>Escopo de inserção de frete no carrinho (Fase C1). Não compra nada.</summary>
+    public const string ScopeCartWrite = "cart-write";
+
+    /// <summary>
+    /// Escopos pedidos na autorização. Fase C1 = cotação + carrinho.
+    /// Deliberadamente SEM shipping-checkout: sem ele é impossível debitar a carteira,
+    /// mesmo por bug. Ampliar esta lista exige reautorizar a conexão.
+    /// </summary>
+    public static readonly string[] RequestedScopeList = [RequiredScope, ScopeCartWrite];
+
+    public static string RequestedScopes => string.Join(' ', RequestedScopeList);
+
+    /// <summary>Escopos mínimos para inserir o frete no carrinho.</summary>
+    public static readonly string[] CartCreationScopes = [RequiredScope, ScopeCartWrite];
+
+    /// <summary>
+    /// Todos os escopos exigidos estão presentes na string concedida pelo Melhor Envio.
+    /// Conexões antigas (só shipping-calculate) retornam false para carrinho.
+    /// </summary>
+    public static bool HasAllScopes(string? granted, IEnumerable<string> required)
+    {
+        if (string.IsNullOrWhiteSpace(granted))
+            return false;
+
+        var grantedSet = granted
+            .Split([' ', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return required.All(grantedSet.Contains);
+    }
     public const int AccessTokenLifetimeDays = 30;
     public const int RefreshTokenLifetimeDays = 45;
     public const int OAuthStateLifetimeMinutes = 10;
@@ -55,9 +87,26 @@ public class MelhorEnvioOptions
         Uri.TryCreate(ResolvedBaseUrl, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
+    /// <summary>
+    /// Cria o envio no carrinho automaticamente após NF-e autorizada.
+    /// Env: MELHOR_ENVIO_AUTO_CREATE_CART_SHIPMENT. Default false — inserir no carrinho
+    /// não custa nada, mas continua sendo ação explícita até haver histórico.
+    /// </summary>
+    public bool AutoCreateCartShipment { get; set; }
+
+    /// <summary>
+    /// RESERVADO para fase futura. Env: MELHOR_ENVIO_AUTO_PURCHASE_LABEL. Default false.
+    /// NÃO é lido por nenhum código nesta fase: comprar etiqueta debita a carteira e
+    /// exigiria o escopo shipping-checkout, que não é solicitado.
+    /// </summary>
+    public bool AutoPurchaseLabel { get; set; }
+
     public string AuthorizeUrl => $"{ResolvedBaseUrl}/oauth/authorize";
     public string TokenUrl => $"{ResolvedBaseUrl}/oauth/token";
     public string CalculateUrl => $"{ResolvedBaseUrl}/api/v2/me/shipment/calculate";
+
+    /// <summary>Inserção de frete no carrinho. NÃO compra: checkout é endpoint separado.</summary>
+    public string CartUrl => $"{ResolvedBaseUrl}/api/v2/me/cart";
 
     /// <summary>Credenciais mínimas para cotação futura (legado).</summary>
     public bool IsConfigured =>

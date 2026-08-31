@@ -93,6 +93,19 @@ export const adminApi = {
    * Reavalia apenas o registro local do envio Melhor Envio.
    * Não cria envio, não compra etiqueta e não chama a API do Melhor Envio.
    */
+  /**
+   * Insere o frete no carrinho do Melhor Envio (Fase C1).
+   * Não compra etiqueta, não gera etiqueta e não imprime etiqueta.
+   */
+  async createMelhorEnvioCartShipment(id: string): Promise<AdminOrderDetail> {
+    const data = await apiClient.post<Parameters<typeof mapAdminOrderDetail>[0]>(
+      `/api/admin/orders/${id}/melhor-envio/create-cart-shipment`,
+      undefined,
+      { auth: true },
+    );
+    return mapAdminOrderDetail(data);
+  },
+
   async prepareMelhorEnvio(id: string): Promise<AdminOrderDetail> {
     const data = await apiClient.post<Parameters<typeof mapAdminOrderDetail>[0]>(
       `/api/admin/orders/${id}/melhor-envio/prepare`,

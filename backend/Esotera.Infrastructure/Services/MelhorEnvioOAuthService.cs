@@ -66,7 +66,7 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
             ["redirect_uri"] = _options.RedirectUri!.Trim(),
             ["response_type"] = "code",
             ["state"] = plainState,
-            ["scope"] = MelhorEnvioOptions.RequiredScope
+            ["scope"] = MelhorEnvioOptions.RequestedScopes
         };
 
         var qs = string.Join("&", query.Select(kv =>
@@ -189,7 +189,7 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
             connection.AccessTokenExpiresAtUtc = accessExpires;
             connection.RefreshTokenExpiresAtUtc = refreshExpires;
             connection.UpdatedAtUtc = now;
-            connection.Scopes = MelhorEnvioOptions.RequiredScope;
+            connection.Scopes = MelhorEnvioOptions.RequestedScopes;
             connection.Environment = _options.NormalizedEnvironment;
             if (connection.ConnectedAtUtc == default)
                 connection.ConnectedAtUtc = now;
@@ -277,6 +277,11 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
         refreshStillValid = connection.RefreshTokenExpiresAtUtc > now;
         environmentMatches = EnvironmentMatches(connection);
 
+        var missingScopes = MelhorEnvioOptions.RequestedScopeList
+            .Where(s => !MelhorEnvioOptions.HasAllScopes(connection.Scopes, [s]))
+            .ToArray();
+        var scopeMismatch = missingScopes.Length > 0;
+
         return new MelhorEnvioStatusDto(
             Connected: true,
             Configured: configured,
@@ -286,8 +291,11 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
             RefreshTokenExpiresAtUtc: connection.RefreshTokenExpiresAtUtc,
             ConnectedAtUtc: connection.ConnectedAtUtc,
             AccessTokenValid: accessValid && environmentMatches,
-            NeedsReauthorization: !refreshStillValid || !environmentMatches,
-            EnvironmentMismatch: !environmentMatches);
+            NeedsReauthorization: !refreshStillValid || !environmentMatches || scopeMismatch,
+            EnvironmentMismatch: !environmentMatches,
+            ScopeMismatch: scopeMismatch,
+            RequestedScopes: MelhorEnvioOptions.RequestedScopes,
+            MissingScopes: missingScopes);
     }
 
     /// <summary>

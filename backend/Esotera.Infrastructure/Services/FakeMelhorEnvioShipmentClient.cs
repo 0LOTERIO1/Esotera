@@ -47,6 +47,37 @@ public sealed class FakeMelhorEnvioShipmentClient : IMelhorEnvioShipmentClient
         return Task.FromResult(new MelhorEnvioCalculateOutcome { Ok = true, Services = services });
     }
 
+    // --- Inserção no carrinho (Fase C1). Nunca compra etiqueta. ---
+
+    public int CartCallCount { get; private set; }
+    public MelhorEnvioCartRequest? LastCartRequest { get; private set; }
+
+    /// <summary>Quando null, devolve sucesso com id/protocolo fixos.</summary>
+    public Func<MelhorEnvioCartRequest, MelhorEnvioCartOutcome>? CartOutcome { get; set; }
+
+    public const string FakeCartShipmentId = "fake-shipment-0001";
+    public const string FakeCartProtocol = "ORD-FAKE-0001";
+
+    public Task<MelhorEnvioCartOutcome> CreateCartItemAsync(
+        MelhorEnvioCartRequest request,
+        string accessToken,
+        CancellationToken cancellationToken = default)
+    {
+        CartCallCount++;
+        AccessTokensUsed.Add(accessToken);
+        LastCartRequest = request;
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var outcome = CartOutcome?.Invoke(request) ?? new MelhorEnvioCartOutcome
+        {
+            Ok = true,
+            ShipmentId = FakeCartShipmentId,
+            Protocol = FakeCartProtocol
+        };
+
+        return Task.FromResult(outcome);
+    }
+
     public void Reset()
     {
         CallCount = 0;
@@ -58,6 +89,9 @@ public sealed class FakeMelhorEnvioShipmentClient : IMelhorEnvioShipmentClient
         NetworkError = false;
         FailOk = false;
         CustomServices = null;
+        CartCallCount = 0;
+        LastCartRequest = null;
+        CartOutcome = null;
     }
 
     /// <summary>Preços alinhados à antiga simulação por UF (SP = 18.90 / 28.90).</summary>

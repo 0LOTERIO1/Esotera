@@ -259,10 +259,37 @@ function MelhorEnvioSection() {
                   {diagnostics.connection.environmentMismatch
                     ? " (ambiente divergente)"
                     : ""}
+                  {diagnostics.connection.scopeMismatch
+                    ? " (escopos desatualizados)"
+                    : ""}
                 </div>
                 <div>
                   Conexão salva — escopos:{" "}
                   {diagnostics.connection.scopes ?? "—"}
+                </div>
+                <div>
+                  Escopos exigidos hoje:{" "}
+                  {diagnostics.connection.requestedScopes ?? "—"}
+                </div>
+                {diagnostics.connection.missingScopes?.length ? (
+                  <div className="text-esotera-secondary">
+                    Escopos faltando:{" "}
+                    {diagnostics.connection.missingScopes.join(", ")} —
+                    reautorize o Melhor Envio antes de criar envio.
+                  </div>
+                ) : null}
+                <div>
+                  Remetente configurado: {yesNo(diagnostics.senderConfigured)}
+                </div>
+                {diagnostics.senderMissingFields?.length ? (
+                  <div className="text-esotera-secondary">
+                    Remetente — campos ausentes no servidor:{" "}
+                    {diagnostics.senderMissingFields.join(", ")}
+                  </div>
+                ) : null}
+                <div>
+                  Criação automática no carrinho:{" "}
+                  {yesNo(diagnostics.autoCreateCartShipment)}
                 </div>
                 <div>
                   Access token válido até:{" "}

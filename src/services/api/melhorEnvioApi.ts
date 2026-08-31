@@ -17,6 +17,10 @@ export type MelhorEnvioStatusDto = {
   accessTokenValid: boolean;
   needsReauthorization: boolean;
   environmentMismatch?: boolean;
+  /** Conexão salva não tem todos os escopos que a aplicação solicita hoje. */
+  scopeMismatch?: boolean;
+  requestedScopes?: string | null;
+  missingScopes?: string[] | null;
 };
 
 export type MelhorEnvioDiagnosticsDto = {
@@ -28,6 +32,11 @@ export type MelhorEnvioDiagnosticsDto = {
   canAuthenticate: boolean | null;
   message: string;
   connection: MelhorEnvioStatusDto;
+  /** Remetente (MELHOR_ENVIO_FROM_*) completo para envio comercial. */
+  senderConfigured?: boolean;
+  /** Rótulos dos campos ausentes — nunca valores. */
+  senderMissingFields?: string[] | null;
+  autoCreateCartShipment?: boolean;
 };
 
 export const melhorEnvioApi = {

@@ -141,6 +141,40 @@ public static class DependencyInjection
                 configuration["FRONTEND_BASE_URL"],
                 configuration["MelhorEnvio:FrontendBaseUrl"],
                 configuration["Email:FrontendBaseUrl"]);
+            options.AutoCreateCartShipment = ParseBool(
+                configuration["MELHOR_ENVIO_AUTO_CREATE_CART_SHIPMENT"]
+                ?? configuration["MelhorEnvio:AutoCreateCartShipment"])
+                ?? options.AutoCreateCartShipment;
+            // Reservado: nenhum código desta fase lê AutoPurchaseLabel.
+            options.AutoPurchaseLabel = ParseBool(
+                configuration["MELHOR_ENVIO_AUTO_PURCHASE_LABEL"]
+                ?? configuration["MelhorEnvio:AutoPurchaseLabel"])
+                ?? options.AutoPurchaseLabel;
+        });
+        services.Configure<MelhorEnvioSenderOptions>(options =>
+        {
+            configuration.GetSection(MelhorEnvioSenderOptions.SectionName).Bind(options);
+            options.Name = FirstNonEmpty(options.Name, configuration["MELHOR_ENVIO_FROM_NAME"]);
+            options.Email = FirstNonEmpty(options.Email, configuration["MELHOR_ENVIO_FROM_EMAIL"]);
+            options.Phone = FirstNonEmpty(options.Phone, configuration["MELHOR_ENVIO_FROM_PHONE"]);
+            options.CompanyDocument = FirstNonEmpty(
+                options.CompanyDocument,
+                configuration["MELHOR_ENVIO_FROM_COMPANY_DOCUMENT"]);
+            options.StateRegister = FirstNonEmpty(
+                options.StateRegister,
+                configuration["MELHOR_ENVIO_FROM_STATE_REGISTER"]);
+            options.EconomicActivityCode = FirstNonEmpty(
+                options.EconomicActivityCode,
+                configuration["MELHOR_ENVIO_FROM_ECONOMIC_ACTIVITY_CODE"]);
+            options.Address = FirstNonEmpty(options.Address, configuration["MELHOR_ENVIO_FROM_ADDRESS"]);
+            options.Number = FirstNonEmpty(options.Number, configuration["MELHOR_ENVIO_FROM_NUMBER"]);
+            options.Complement = FirstNonEmpty(
+                options.Complement,
+                configuration["MELHOR_ENVIO_FROM_COMPLEMENT"]);
+            options.District = FirstNonEmpty(options.District, configuration["MELHOR_ENVIO_FROM_DISTRICT"]);
+            options.City = FirstNonEmpty(options.City, configuration["MELHOR_ENVIO_FROM_CITY"]);
+            options.StateAbbr = FirstNonEmpty(options.StateAbbr, configuration["MELHOR_ENVIO_FROM_STATE_ABBR"]);
+            options.Platform = FirstNonEmpty(options.Platform, configuration["MELHOR_ENVIO_FROM_PLATFORM"]);
         });
         services.Configure<IntegrationsEncryptionOptions>(options =>
         {
@@ -318,6 +352,7 @@ public static class DependencyInjection
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
         services.AddScoped<IMelhorEnvioDiagnosticsService, MelhorEnvioDiagnosticsService>();
+        services.AddScoped<IMelhorEnvioShipmentProcessingService, MelhorEnvioShipmentProcessingService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
 

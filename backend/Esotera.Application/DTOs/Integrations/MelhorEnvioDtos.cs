@@ -2,6 +2,9 @@ namespace Esotera.Application.DTOs.Integrations;
 
 public sealed record MelhorEnvioAuthorizeResponse(string AuthorizationUrl);
 
+/// <summary>
+/// Status da conexão. NUNCA inclui access token, refresh token ou client secret.
+/// </summary>
 public sealed record MelhorEnvioStatusDto(
     bool Connected,
     bool Configured,
@@ -11,7 +14,22 @@ public sealed record MelhorEnvioStatusDto(
     DateTime? RefreshTokenExpiresAtUtc,
     DateTime? ConnectedAtUtc,
     bool AccessTokenValid,
-    bool NeedsReauthorization);
+    bool NeedsReauthorization,
+    /// <summary>Conexão salva é de outro ambiente que o configurado — exige reautorizar.</summary>
+    bool EnvironmentMismatch = false);
+
+/// <summary>
+/// Diagnóstico Admin-only. Sem segredos: expõe apenas presença/validade.
+/// </summary>
+public sealed record MelhorEnvioDiagnosticsDto(
+    string ConfiguredEnvironment,
+    string BaseUrl,
+    bool Configured,
+    bool TokenPresent,
+    /// <summary>null quando a sonda não foi executada (probe=false).</summary>
+    bool? CanAuthenticate,
+    string Message,
+    MelhorEnvioStatusDto Connection);
 
 public static class MelhorEnvioOAuthReasons
 {

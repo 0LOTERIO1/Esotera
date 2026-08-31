@@ -124,6 +124,10 @@ public static class DependencyInjection
                 configuration["MELHOR_ENVIO_ENVIRONMENT"],
                 configuration["MelhorEnvio:Environment"],
                 options.Environment) ?? "sandbox";
+            options.BaseUrl = FirstNonEmpty(
+                options.BaseUrl,
+                configuration["MELHOR_ENVIO_BASE_URL"],
+                configuration["MelhorEnvio:BaseUrl"]);
             options.RedirectUri = FirstNonEmpty(
                 options.RedirectUri,
                 configuration["MELHOR_ENVIO_REDIRECT_URI"],
@@ -312,6 +316,7 @@ public static class DependencyInjection
         services.AddScoped<IJ3IdentifierHydrationService, J3IdentifierHydrationService>();
         services.AddSingleton<IIntegrationsEncryptionService, IntegrationsEncryptionService>();
         services.AddScoped<IMelhorEnvioOAuthService, MelhorEnvioOAuthService>();
+        services.AddScoped<IMelhorEnvioDiagnosticsService, MelhorEnvioDiagnosticsService>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
 

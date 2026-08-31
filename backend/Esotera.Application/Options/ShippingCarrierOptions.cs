@@ -1,16 +1,20 @@
 namespace Esotera.Application.Options;
 
 /// <summary>
-/// Melhor Envio — OAuth Sandbox + preparação de cotação.
+/// Melhor Envio — OAuth (sandbox ou produção) + cotação.
 /// Variáveis: MELHOR_ENVIO_*, INTEGRATIONS_ENCRYPTION_KEY (cifra de tokens).
+/// Auth somente OAuth: tokens ficam cifrados no banco, nunca em env.
 /// </summary>
 public class MelhorEnvioOptions
 {
     public const string SectionName = "MelhorEnvio";
 
-    public const string SandboxAuthorizeUrl = "https://sandbox.melhorenvio.com.br/oauth/authorize";
-    public const string SandboxTokenUrl = "https://sandbox.melhorenvio.com.br/oauth/token";
-    public const string SandboxCalculateUrl = "https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate";
+    public const string SandboxBaseUrl = "https://sandbox.melhorenvio.com.br";
+    public const string ProductionBaseUrl = "https://melhorenvio.com.br";
+
+    public const string SandboxAuthorizeUrl = $"{SandboxBaseUrl}/oauth/authorize";
+    public const string SandboxTokenUrl = $"{SandboxBaseUrl}/oauth/token";
+    public const string SandboxCalculateUrl = $"{SandboxBaseUrl}/api/v2/me/shipment/calculate";
     public const string RequiredScope = "shipping-calculate";
     public const int AccessTokenLifetimeDays = 30;
     public const int RefreshTokenLifetimeDays = 45;
@@ -21,8 +25,13 @@ public class MelhorEnvioOptions
     public bool Enabled { get; set; }
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
-    /// <summary>Sandbox vs produção quando a API for ligada.</summary>
+    /// <summary>Sandbox vs produção. Env: MELHOR_ENVIO_ENVIRONMENT.</summary>
     public string Environment { get; set; } = "sandbox";
+
+    /// <summary>
+    /// Base da API. Env: MELHOR_ENVIO_BASE_URL. Vazio = derivada do <see cref="Environment"/>.
+    /// </summary>
+    public string? BaseUrl { get; set; }
     /// <summary>Callback OAuth registrado no app Melhor Envio (URL da API).</summary>
     public string? RedirectUri { get; set; }
     /// <summary>User-Agent obrigatório em todas as requests à API Melhor Envio.</summary>
@@ -31,7 +40,24 @@ public class MelhorEnvioOptions
     public string? FrontendBaseUrl { get; set; }
 
     public bool IsSandbox =>
-        string.Equals(Environment?.Trim(), "sandbox", StringComparison.OrdinalIgnoreCase);
+        !string.Equals(Environment?.Trim(), "production", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Rótulo canônico do ambiente — carimbado na conexão salva.</summary>
+    public string NormalizedEnvironment => IsSandbox ? "sandbox" : "production";
+
+    /// <summary>Base efetiva: BaseUrl explícita ou o default do ambiente.</summary>
+    public string ResolvedBaseUrl =>
+        string.IsNullOrWhiteSpace(BaseUrl)
+            ? (IsSandbox ? SandboxBaseUrl : ProductionBaseUrl)
+            : BaseUrl.Trim().TrimEnd('/');
+
+    public bool HasValidBaseUrl =>
+        Uri.TryCreate(ResolvedBaseUrl, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    public string AuthorizeUrl => $"{ResolvedBaseUrl}/oauth/authorize";
+    public string TokenUrl => $"{ResolvedBaseUrl}/oauth/token";
+    public string CalculateUrl => $"{ResolvedBaseUrl}/api/v2/me/shipment/calculate";
 
     /// <summary>Credenciais mínimas para cotação futura (legado).</summary>
     public bool IsConfigured =>
@@ -39,10 +65,13 @@ public class MelhorEnvioOptions
         && !string.IsNullOrWhiteSpace(ClientId)
         && !string.IsNullOrWhiteSpace(ClientSecret);
 
-    /// <summary>Pronto para fluxo OAuth Sandbox (authorize / token / refresh).</summary>
+    /// <summary>
+    /// Pronto para o fluxo OAuth (authorize / token / refresh) em qualquer ambiente.
+    /// Produção exige a mesma configuração de sandbox — o ambiente não é mais um gate.
+    /// </summary>
     public bool IsOAuthConfigured =>
         Enabled
-        && IsSandbox
+        && HasValidBaseUrl
         && !string.IsNullOrWhiteSpace(ClientId)
         && !string.IsNullOrWhiteSpace(ClientSecret)
         && !string.IsNullOrWhiteSpace(RedirectUri)

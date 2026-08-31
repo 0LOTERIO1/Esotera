@@ -72,7 +72,7 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
         var qs = string.Join("&", query.Select(kv =>
             $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
 
-        var url = $"{MelhorEnvioOptions.SandboxAuthorizeUrl}?{qs}";
+        var url = $"{_options.AuthorizeUrl}?{qs}";
         _logger.LogInformation("Melhor Envio OAuth: URL de autorização gerada para admin {AdminUserId}", adminUserId);
         return new MelhorEnvioAuthorizeResponse(url);
     }
@@ -190,14 +190,16 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
             connection.RefreshTokenExpiresAtUtc = refreshExpires;
             connection.UpdatedAtUtc = now;
             connection.Scopes = MelhorEnvioOptions.RequiredScope;
-            connection.Environment = "sandbox";
+            connection.Environment = _options.NormalizedEnvironment;
             if (connection.ConnectedAtUtc == default)
                 connection.ConnectedAtUtc = now;
 
             await _db.SaveChangesAsync(cancellationToken);
             if (tx is not null) await tx.CommitAsync(cancellationToken);
 
-            _logger.LogInformation("Melhor Envio OAuth: conexão sandbox persistida");
+            _logger.LogInformation(
+                "Melhor Envio OAuth: conexão persistida (environment={Environment})",
+                _options.NormalizedEnvironment);
             return FrontendSuccess();
         }
         catch (Exception ex)
@@ -241,9 +243,12 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
         var now = _clock.UtcNow;
         var refreshStillValid = connection.RefreshTokenExpiresAtUtc > now;
         var accessValid = connection.AccessTokenExpiresAtUtc > now;
+        var environmentMatches = EnvironmentMatches(connection);
 
         // Refresh lazy se perto de expirar e ainda houver refresh válido.
+        // Nunca renovar token de outro ambiente: o endpoint de token seria o errado.
         if (configured
+            && environmentMatches
             && refreshStillValid
             && connection.AccessTokenExpiresAtUtc <= now.AddHours(MelhorEnvioOptions.RefreshSkewHours))
         {
@@ -270,6 +275,7 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
         now = _clock.UtcNow;
         accessValid = connection.AccessTokenExpiresAtUtc > now;
         refreshStillValid = connection.RefreshTokenExpiresAtUtc > now;
+        environmentMatches = EnvironmentMatches(connection);
 
         return new MelhorEnvioStatusDto(
             Connected: true,
@@ -279,8 +285,21 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
             AccessTokenExpiresAtUtc: connection.AccessTokenExpiresAtUtc,
             RefreshTokenExpiresAtUtc: connection.RefreshTokenExpiresAtUtc,
             ConnectedAtUtc: connection.ConnectedAtUtc,
-            AccessTokenValid: accessValid,
-            NeedsReauthorization: !refreshStillValid);
+            AccessTokenValid: accessValid && environmentMatches,
+            NeedsReauthorization: !refreshStillValid || !environmentMatches,
+            EnvironmentMismatch: !environmentMatches);
+    }
+
+    /// <summary>
+    /// Token de sandbox não vale em produção (e vice-versa). Conexões antigas sem
+    /// ambiente carimbado são tratadas como sandbox, que era o único ambiente possível.
+    /// </summary>
+    private bool EnvironmentMatches(MelhorEnvioConnection connection)
+    {
+        var saved = string.IsNullOrWhiteSpace(connection.Environment)
+            ? "sandbox"
+            : connection.Environment.Trim();
+        return string.Equals(saved, _options.NormalizedEnvironment, StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<string?> GetValidAccessTokenAsync(CancellationToken cancellationToken = default)
@@ -295,6 +314,15 @@ public sealed class MelhorEnvioOAuthService : IMelhorEnvioOAuthService
 
         if (connection is null)
             return null;
+
+        if (!EnvironmentMatches(connection))
+        {
+            _logger.LogWarning(
+                "Melhor Envio: conexão salva pertence a outro ambiente (salvo={Saved}, atual={Current}). Reautorize.",
+                connection.Environment,
+                _options.NormalizedEnvironment);
+            return null;
+        }
 
         var now = _clock.UtcNow;
         if (connection.RefreshTokenExpiresAtUtc <= now)

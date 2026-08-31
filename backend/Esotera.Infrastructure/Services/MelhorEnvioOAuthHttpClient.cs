@@ -70,7 +70,7 @@ public sealed class MelhorEnvioOAuthHttpClient : IMelhorEnvioOAuthClient
         Dictionary<string, string> body,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, MelhorEnvioOptions.SandboxTokenUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Post, _options.TokenUrl);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.TryAddWithoutValidation("User-Agent", _options.UserAgent!.Trim());
         request.Content = new StringContent(

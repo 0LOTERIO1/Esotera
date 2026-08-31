@@ -41,7 +41,13 @@ public sealed class MelhorEnvioShipmentHttpClient : IMelhorEnvioShipmentClient
             return new MelhorEnvioCalculateOutcome { Ok = false };
         }
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, MelhorEnvioOptions.SandboxCalculateUrl);
+        if (!_options.HasValidBaseUrl)
+        {
+            _logger.LogWarning("Melhor Envio calculate: base URL inválida");
+            return new MelhorEnvioCalculateOutcome { Ok = false };
+        }
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.CalculateUrl);
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         httpRequest.Headers.TryAddWithoutValidation("User-Agent", _options.UserAgent.Trim());

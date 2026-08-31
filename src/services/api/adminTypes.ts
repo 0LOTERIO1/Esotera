@@ -55,6 +55,10 @@ export type AdminOrderSummary = {
   shippingMethodName: string;
   createdAt: string;
   rowVersion: number;
+  /** Serviço realmente cotado (ex.: SEDEX, PAC). Ausente em pedidos antigos. */
+  shippingServiceName?: string;
+  /** Transportadora do serviço cotado (ex.: Correios). Ausente em pedidos antigos. */
+  shippingCarrierName?: string;
 };
 
 export type AdminOrderDetail = {
@@ -71,6 +75,17 @@ export type AdminOrderDetail = {
     methodName: string;
     provider: string;
     estimatedDays: string;
+    /** Snapshot da cotação. Ausentes em pedidos anteriores à captura estruturada. */
+    carrierName?: string;
+    serviceName?: string;
+    serviceId?: number;
+    originalPrice?: number;
+    deliveryMinDays?: number;
+    deliveryMaxDays?: number;
+    quoteEnvironment?: string;
+    quotedAtUtc?: string;
+    freeShippingApplied?: boolean;
+    subsidyApplied?: boolean;
   };
   payment: {
     method: PaymentMethod | string;

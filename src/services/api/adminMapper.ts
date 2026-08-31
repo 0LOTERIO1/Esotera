@@ -123,6 +123,8 @@ export function mapAdminOrderSummary(api: {
   shippingMethodName: string;
   createdAt: string;
   rowVersion: number;
+  shippingServiceName?: string | null;
+  shippingCarrierName?: string | null;
 }): AdminOrderSummary {
   return {
     id: api.id,
@@ -135,6 +137,8 @@ export function mapAdminOrderSummary(api: {
     shippingMethodName: api.shippingMethodName,
     createdAt: api.createdAt,
     rowVersion: api.rowVersion,
+    shippingServiceName: api.shippingServiceName ?? undefined,
+    shippingCarrierName: api.shippingCarrierName ?? undefined,
   };
 }
 
@@ -170,6 +174,16 @@ export function mapAdminOrderDetail(api: {
     methodName: string;
     provider: string;
     estimatedDays: number | null;
+    carrierName?: string | null;
+    serviceName?: string | null;
+    serviceId?: number | null;
+    originalPrice?: number | null;
+    deliveryMinDays?: number | null;
+    deliveryMaxDays?: number | null;
+    quoteEnvironment?: string | null;
+    quotedAtUtc?: string | null;
+    freeShippingApplied?: boolean | null;
+    subsidyApplied?: boolean | null;
   };
   payment: {
     method: string;
@@ -232,6 +246,16 @@ export function mapAdminOrderDetail(api: {
       methodName: api.shipping.methodName,
       provider: api.shipping.provider,
       estimatedDays: formatEstimatedDays(api.shipping.estimatedDays),
+      carrierName: api.shipping.carrierName ?? undefined,
+      serviceName: api.shipping.serviceName ?? undefined,
+      serviceId: api.shipping.serviceId ?? undefined,
+      originalPrice: api.shipping.originalPrice ?? undefined,
+      deliveryMinDays: api.shipping.deliveryMinDays ?? undefined,
+      deliveryMaxDays: api.shipping.deliveryMaxDays ?? undefined,
+      quoteEnvironment: api.shipping.quoteEnvironment ?? undefined,
+      quotedAtUtc: api.shipping.quotedAtUtc ?? undefined,
+      freeShippingApplied: api.shipping.freeShippingApplied ?? undefined,
+      subsidyApplied: api.shipping.subsidyApplied ?? undefined,
     },
     payment: {
       method: api.payment.method as PaymentMethod,

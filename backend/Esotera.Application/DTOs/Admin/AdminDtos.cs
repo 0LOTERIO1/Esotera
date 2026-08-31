@@ -53,7 +53,11 @@ public record AdminOrderSummaryDto(
     string PaymentMethod,
     string ShippingMethodName,
     DateTime CreatedAt,
-    long RowVersion
+    long RowVersion,
+    /// <summary>Serviço realmente cotado (ex.: SEDEX, PAC). Null em pedidos antigos.</summary>
+    string? ShippingServiceName = null,
+    /// <summary>Transportadora do serviço cotado (ex.: Correios). Null em pedidos antigos.</summary>
+    string? ShippingCarrierName = null
 );
 
 public record AdminOrderDetailDto(
@@ -77,11 +81,30 @@ public record AdminOrderDetailDto(
     long RowVersion
 );
 
+/// <summary>
+/// Snapshot da cotação gravado no pedido. Campos opcionais são null em pedidos
+/// anteriores à captura estruturada da cotação.
+/// </summary>
 public record AdminOrderShippingDto(
     string MethodId,
     string MethodName,
     string Provider,
-    int? EstimatedDays
+    int? EstimatedDays,
+    /// <summary>Transportadora (ex.: Correios).</summary>
+    string? CarrierName = null,
+    /// <summary>Serviço realmente cotado (ex.: SEDEX, PAC).</summary>
+    string? ServiceName = null,
+    /// <summary>Id do serviço na transportadora/marketplace de frete.</summary>
+    int? ServiceId = null,
+    /// <summary>Preço cotado pela transportadora, antes de frete grátis/subsídio.</summary>
+    decimal? OriginalPrice = null,
+    int? DeliveryMinDays = null,
+    int? DeliveryMaxDays = null,
+    /// <summary>Ambiente em que a cotação foi feita (sandbox/production).</summary>
+    string? QuoteEnvironment = null,
+    DateTime? QuotedAtUtc = null,
+    bool? FreeShippingApplied = null,
+    bool? SubsidyApplied = null
 );
 
 public record AdminOrderPaymentDto(

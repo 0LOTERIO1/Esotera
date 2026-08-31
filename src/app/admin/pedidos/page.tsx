@@ -232,6 +232,9 @@ export default function AdminOrdersPage() {
 
   const isJ3Shipping =
     !!selected && selected.shipping.methodId.toLowerCase() === "j3";
+  const isMelhorEnvioShipping =
+    !!selected &&
+    selected.shipping.methodId.toLowerCase().startsWith("melhor_");
 
   return (
     <div>
@@ -310,6 +313,13 @@ export default function AdminOrdersPage() {
                       order.paymentMethod as keyof typeof paymentMethodLabels
                     ] ?? order.paymentMethod}{" "}
                     · {order.shippingMethodName}
+                    {order.shippingServiceName
+                      ? ` (${order.shippingServiceName}${
+                          order.shippingCarrierName
+                            ? ` · ${order.shippingCarrierName}`
+                            : ""
+                        })`
+                      : ""}
                   </p>
                 </div>
                 <StatusBadge status={order.status} />
@@ -459,16 +469,61 @@ export default function AdminOrdersPage() {
                   ? ` · ${selected.payment.installments}x`
                   : ""}
               </p>
-              <p>
-                Entrega: {selected.shipping.methodName} ·{" "}
-                {selected.shipping.estimatedDays}
-              </p>
               <p className="mt-2">
                 {selected.address.street}, {selected.address.number}
                 <br />
                 {selected.address.neighborhood} · {selected.address.city}/
                 {selected.address.state} · CEP {selected.address.cep}
               </p>
+            </div>
+
+            <div className="mt-4 rounded border border-esotera-border/70 p-3 text-sm">
+              <h3 className="text-esotera-text">Entrega</h3>
+              <dl className="mt-1 space-y-1 text-esotera-muted">
+                <div>Método: {selected.shipping.methodName}</div>
+                <div>
+                  Serviço escolhido:{" "}
+                  {selected.shipping.serviceName ?? "não registrado"}
+                  {selected.shipping.serviceId
+                    ? ` (id ${selected.shipping.serviceId})`
+                    : ""}
+                </div>
+                <div>
+                  Transportadora:{" "}
+                  {selected.shipping.carrierName ?? "não registrada"}
+                </div>
+                <div>Prazo: {selected.shipping.estimatedDays}</div>
+                <div>
+                  Frete cobrado do cliente:{" "}
+                  <Price value={selected.shippingPrice} />
+                </div>
+                {selected.shipping.originalPrice !== undefined ? (
+                  <div>
+                    Frete cotado na transportadora:{" "}
+                    <Price value={selected.shipping.originalPrice} />
+                    {selected.shipping.freeShippingApplied
+                      ? " · frete grátis aplicado"
+                      : ""}
+                    {selected.shipping.subsidyApplied
+                      ? " · subsídio aplicado"
+                      : ""}
+                  </div>
+                ) : null}
+                {selected.shipping.quoteEnvironment ? (
+                  <div>
+                    Cotação: {selected.shipping.quoteEnvironment}
+                    {selected.shipping.quotedAtUtc
+                      ? ` · ${formatDate(selected.shipping.quotedAtUtc)}`
+                      : ""}
+                  </div>
+                ) : null}
+              </dl>
+              {isMelhorEnvioShipping ? (
+                <p className="mt-2 text-xs text-esotera-muted">
+                  Envio no Melhor Envio: não criado. A criação de envio e a
+                  etiqueta ainda não estão implementadas.
+                </p>
+              ) : null}
             </div>
 
             <div className="mt-4 rounded border border-esotera-border/70 p-3 text-sm">

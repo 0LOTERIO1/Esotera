@@ -114,7 +114,9 @@ public class AdminQueryService : IAdminQueryService
                 o.PaymentMethod,
                 o.ShippingMethodName,
                 o.CreatedAtUtc,
-                o.RowVersion
+                o.RowVersion,
+                o.ShippingServiceName,
+                o.ShippingCarrierName
             ))
             .ToListAsync();
 
@@ -241,7 +243,17 @@ public class AdminQueryService : IAdminQueryService
             order.ShippingMethodId,
             order.ShippingMethodName,
             order.ShippingProvider,
-            order.ShippingEstimatedDays
+            order.ShippingEstimatedDays,
+            order.ShippingCarrierName,
+            order.ShippingServiceName,
+            order.ShippingServiceId,
+            order.ShippingOriginalPrice,
+            order.ShippingDeliveryMinDays,
+            order.ShippingDeliveryMaxDays,
+            order.ShippingQuoteEnvironment,
+            order.ShippingQuotedAtUtc,
+            order.ShippingFreeShippingApplied,
+            order.ShippingSubsidyApplied
         ),
         new AdminOrderPaymentDto(
             order.PaymentMethod,

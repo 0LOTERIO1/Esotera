@@ -89,6 +89,19 @@ export const adminApi = {
     return detail;
   },
 
+  /**
+   * Reavalia apenas o registro local do envio Melhor Envio.
+   * Não cria envio, não compra etiqueta e não chama a API do Melhor Envio.
+   */
+  async prepareMelhorEnvio(id: string): Promise<AdminOrderDetail> {
+    const data = await apiClient.post<Parameters<typeof mapAdminOrderDetail>[0]>(
+      `/api/admin/orders/${id}/melhor-envio/prepare`,
+      undefined,
+      { auth: true },
+    );
+    return mapAdminOrderDetail(data);
+  },
+
   async exportOrderUpSeller(id: string): Promise<Blob> {
     const base =
       process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||

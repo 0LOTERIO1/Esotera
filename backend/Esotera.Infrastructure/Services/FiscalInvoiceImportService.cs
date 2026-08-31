@@ -31,17 +31,20 @@ public sealed class FiscalInvoiceImportService : IFiscalInvoiceImportService
     private readonly EsoteraDbContext _db;
     private readonly IFiscalInvoiceXmlParser _parser;
     private readonly IIntegrationsEncryptionService _encryption;
+    private readonly IMelhorEnvioShipmentLocalService _melhorEnvioShipment;
     private readonly ILogger<FiscalInvoiceImportService> _logger;
 
     public FiscalInvoiceImportService(
         EsoteraDbContext db,
         IFiscalInvoiceXmlParser parser,
         IIntegrationsEncryptionService encryption,
+        IMelhorEnvioShipmentLocalService melhorEnvioShipment,
         ILogger<FiscalInvoiceImportService> logger)
     {
         _db = db;
         _parser = parser;
         _encryption = encryption;
+        _melhorEnvioShipment = melhorEnvioShipment;
         _logger = logger;
     }
 
@@ -146,6 +149,11 @@ public sealed class FiscalInvoiceImportService : IFiscalInvoiceImportService
             orderId,
             status,
             shaHex[..Math.Min(8, shaHex.Length)]);
+
+        // NF-e autorizada libera o envio Melhor Envio para criação. Zero HTTP aqui:
+        // só promove o registro local waiting_invoice → ready_to_create.
+        if (status == FiscalInvoiceStatus.Authorized)
+            await _melhorEnvioShipment.SyncInvoiceReadinessAsync(orderId, cancellationToken);
 
         return ToResult(entity, idempotent: false);
     }

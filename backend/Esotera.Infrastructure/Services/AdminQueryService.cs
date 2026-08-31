@@ -141,7 +141,11 @@ public class AdminQueryService : IAdminQueryService
             .ThenByDescending(f => f.CreatedAtUtc)
             .FirstOrDefaultAsync();
 
-        return MapDetail(order, fiscal);
+        var melhorEnvio = await _context.MelhorEnvioShipments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.OrderId == orderId);
+
+        return MapDetail(order, fiscal, melhorEnvio);
     }
 
     public async Task<IReadOnlyList<AdminSoldProductDto>> GetSoldProductsAsync()
@@ -213,7 +217,8 @@ public class AdminQueryService : IAdminQueryService
 
     private static AdminOrderDetailDto MapDetail(
         Domain.Entities.Order order,
-        Domain.Entities.FiscalInvoice? fiscal)
+        Domain.Entities.FiscalInvoice? fiscal,
+        Domain.Entities.MelhorEnvioShipment? melhorEnvio = null)
     {
         AdminOrderFiscalSummaryDto fiscalDto;
         if (fiscal is null)
@@ -294,7 +299,24 @@ public class AdminQueryService : IAdminQueryService
         fiscalDto,
         order.CreatedAtUtc,
         order.UpdatedAtUtc,
-        order.RowVersion
+        order.RowVersion,
+        melhorEnvio is null
+            ? null
+            : new AdminOrderMelhorEnvioDto(
+                melhorEnvio.Status,
+                melhorEnvio.Environment,
+                melhorEnvio.MelhorEnvioShipmentId,
+                melhorEnvio.MelhorEnvioProtocol,
+                melhorEnvio.TrackingCode,
+                melhorEnvio.TrackingUrl,
+                melhorEnvio.LabelUrl,
+                melhorEnvio.CartCreatedAtUtc,
+                melhorEnvio.PurchasedAtUtc,
+                melhorEnvio.LabelGeneratedAtUtc,
+                melhorEnvio.LastSyncAtUtc,
+                melhorEnvio.LastSyncErrorCode,
+                melhorEnvio.LastSyncErrorMessage,
+                melhorEnvio.UpdatedAtUtc)
     );
     }
 }

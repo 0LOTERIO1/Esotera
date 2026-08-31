@@ -25,6 +25,7 @@ public class AdminOrdersController : ControllerBase
     private readonly IJ3ReconcileAdminService _j3Reconcile;
     private readonly IJ3TrackingSyncService _j3TrackingSync;
     private readonly IJ3IdentifierHydrationService _j3IdentifierHydration;
+    private readonly IMelhorEnvioShipmentLocalService _melhorEnvioShipment;
     private readonly ICurrentUserService _currentUser;
     private readonly IValidator<UpdateOrderStatusRequest> _statusValidator;
 
@@ -38,6 +39,7 @@ public class AdminOrdersController : ControllerBase
         IJ3ReconcileAdminService j3Reconcile,
         IJ3TrackingSyncService j3TrackingSync,
         IJ3IdentifierHydrationService j3IdentifierHydration,
+        IMelhorEnvioShipmentLocalService melhorEnvioShipment,
         ICurrentUserService currentUser,
         IValidator<UpdateOrderStatusRequest> statusValidator)
     {
@@ -50,6 +52,7 @@ public class AdminOrdersController : ControllerBase
         _j3Reconcile = j3Reconcile;
         _j3TrackingSync = j3TrackingSync;
         _j3IdentifierHydration = j3IdentifierHydration;
+        _melhorEnvioShipment = melhorEnvioShipment;
         _currentUser = currentUser;
         _statusValidator = statusValidator;
     }
@@ -70,6 +73,37 @@ public class AdminOrdersController : ControllerBase
             return NotFound();
 
         return Ok(order);
+    }
+
+    /// <summary>
+    /// Reavalia o registro LOCAL do envio Melhor Envio: cria se faltar e promove
+    /// waiting_invoice → ready_to_create quando há NF-e autorizada.
+    /// ZERO chamadas ao Melhor Envio: não insere no carrinho, não compra, não gera etiqueta.
+    /// </summary>
+    [HttpPost("{id:guid}/melhor-envio/prepare")]
+    public async Task<ActionResult<AdminOrderDetailDto>> PrepareMelhorEnvio(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var order = await _adminQueries.GetOrderAsync(id);
+        if (order == null)
+            return NotFound();
+
+        if (!Domain.Enums.ShippingMethod.IsMelhorEnvio(order.Shipping.MethodId))
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Frete não é Melhor Envio",
+                Detail = "Este pedido não usa entrega Melhor Envio.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        await _melhorEnvioShipment.EnsureAsync(id, cancellationToken);
+        await _melhorEnvioShipment.SyncInvoiceReadinessAsync(id, cancellationToken);
+
+        var updated = await _adminQueries.GetOrderAsync(id);
+        return updated == null ? NotFound() : Ok(updated);
     }
 
     /// <summary>Download .xlsx no layout oficial UpSeller (aba order_). Sem HTTP externo.</summary>

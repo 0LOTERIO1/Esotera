@@ -10,6 +10,11 @@ public static class ShippingMethod
 
     public static bool IsValid(string method) => All.Contains(method);
 
+    /// <summary>Frete operado pelo Melhor Envio (qualquer serviço cotado).</summary>
+    public static bool IsMelhorEnvio(string? method) =>
+        string.Equals(method?.Trim(), MelhorEconomico, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(method?.Trim(), MelhorExpresso, StringComparison.OrdinalIgnoreCase);
+
     public static string GetDisplayName(string method) => method switch
     {
         J3 => "J3 Entregas",

@@ -61,6 +61,34 @@ export type AdminOrderSummary = {
   shippingCarrierName?: string;
 };
 
+export type MelhorEnvioShipmentStatus =
+  | "waiting_invoice"
+  | "ready_to_create"
+  | "cart_pending"
+  | "cart_created"
+  | "purchase_pending"
+  | "purchased"
+  | "label_generated"
+  | "failed"
+  | "cancelled";
+
+export type AdminOrderMelhorEnvio = {
+  status: MelhorEnvioShipmentStatus | string;
+  environment: string;
+  shipmentId?: string;
+  protocol?: string;
+  trackingCode?: string;
+  trackingUrl?: string;
+  labelUrl?: string;
+  cartCreatedAtUtc?: string;
+  purchasedAtUtc?: string;
+  labelGeneratedAtUtc?: string;
+  lastSyncAtUtc?: string;
+  lastSyncErrorCode?: string;
+  lastSyncErrorMessage?: string;
+  updatedAtUtc: string;
+};
+
 export type AdminOrderDetail = {
   id: string;
   orderNumber: string;
@@ -87,6 +115,8 @@ export type AdminOrderDetail = {
     freeShippingApplied?: boolean;
     subsidyApplied?: boolean;
   };
+  /** Envio Melhor Envio. Ausente quando o frete não é Melhor Envio ou não há registro. */
+  melhorEnvio?: AdminOrderMelhorEnvio;
   payment: {
     method: PaymentMethod | string;
     installments?: number;

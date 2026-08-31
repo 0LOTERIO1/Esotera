@@ -20,6 +20,7 @@ public class PaymentService : IPaymentService
     private readonly IMercadoPagoClient _mp;
     private readonly MercadoPagoOptions _options;
     private readonly IJ3FulfillmentService _j3Fulfillment;
+    private readonly IMelhorEnvioShipmentLocalService _melhorEnvioShipment;
     private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
@@ -27,12 +28,14 @@ public class PaymentService : IPaymentService
         IMercadoPagoClient mp,
         IOptions<MercadoPagoOptions> options,
         IJ3FulfillmentService j3Fulfillment,
+        IMelhorEnvioShipmentLocalService melhorEnvioShipment,
         ILogger<PaymentService> logger)
     {
         _context = context;
         _mp = mp;
         _options = options.Value;
         _j3Fulfillment = j3Fulfillment;
+        _melhorEnvioShipment = melhorEnvioShipment;
         _logger = logger;
     }
 
@@ -173,7 +176,7 @@ public class PaymentService : IPaymentService
             snapshot.StatusDetail,
             $"Order {methodType} criada no Mercado Pago");
 
-        await PersistOrderAndJ3PendingAtomicallyAsync(order, cancellationToken);
+        await PersistOrderAndShippingObligationsAtomicallyAsync(order, cancellationToken);
         return MapResponse(order, snapshot, methodType);
     }
 
@@ -347,7 +350,7 @@ public class PaymentService : IPaymentService
             _logger.LogInformation(
                 "Webhook MP ignorado (payment_approved monotônico) para pedido {OrderId}.",
                 order.Id);
-            await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
+            await EnsureShippingObligationsIfApprovedAsync(order, cancellationToken);
             return;
         }
 
@@ -361,7 +364,7 @@ public class PaymentService : IPaymentService
             _logger.LogInformation(
                 "Webhook MP repetido ignorado (idempotente) para pedido {OrderId}.",
                 order.Id);
-            await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
+            await EnsureShippingObligationsIfApprovedAsync(order, cancellationToken);
             return;
         }
 
@@ -386,7 +389,7 @@ public class PaymentService : IPaymentService
             mpOrder.StatusDetail,
             $"Webhook MP order: {mpOrder.Status}/{mpOrder.StatusDetail}");
 
-        await PersistOrderAndJ3PendingAtomicallyAsync(order, cancellationToken);
+        await PersistOrderAndShippingObligationsAtomicallyAsync(order, cancellationToken);
         _logger.LogInformation(
             "Pedido {OrderId} atualizado via webhook MP (OrderId={MpOrderId} Status={Status} StatusDetail={StatusDetail}).",
             order.Id,
@@ -427,32 +430,43 @@ public class PaymentService : IPaymentService
         return false;
     }
 
-    private async Task PersistOrderAndJ3PendingAtomicallyAsync(
+    private async Task PersistOrderAndShippingObligationsAtomicallyAsync(
         Domain.Entities.Order order,
         CancellationToken cancellationToken)
     {
-        var j3Approved = order.Status == OrderStatus.PaymentApproved
-            && string.Equals(order.ShippingMethodId, ShippingMethod.J3, StringComparison.OrdinalIgnoreCase);
+        // Fretes com obrigação local de despacho: se o Ensure falhar, o payment_approved
+        // também sofre rollback — nunca um pedido pago sem a obrigação registrada.
+        var obligationApproved = order.Status == OrderStatus.PaymentApproved
+            && (string.Equals(order.ShippingMethodId, ShippingMethod.J3, StringComparison.OrdinalIgnoreCase)
+                || ShippingMethod.IsMelhorEnvio(order.ShippingMethodId));
 
-        if (!j3Approved || !_context.Database.IsRelational())
+        if (!obligationApproved || !_context.Database.IsRelational())
         {
             await _context.SaveChangesAsync(cancellationToken);
-            await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
+            await EnsureShippingObligationsIfApprovedAsync(order, cancellationToken);
             return;
         }
 
         await using var tx = await _context.Database.BeginTransactionAsync(cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
-        await EnsureJ3FulfillmentPendingIfApprovedAsync(order, cancellationToken);
+        await EnsureShippingObligationsIfApprovedAsync(order, cancellationToken);
         await tx.CommitAsync(cancellationToken);
     }
 
-    private Task EnsureJ3FulfillmentPendingIfApprovedAsync(
+    /// <summary>
+    /// Obrigações locais de despacho após aprovação. Zero HTTP para transportadoras:
+    /// só registra que o pedido precisa ser despachado, por transportadora aplicável.
+    /// </summary>
+    private async Task EnsureShippingObligationsIfApprovedAsync(
         Domain.Entities.Order order,
-        CancellationToken cancellationToken) =>
-        order.Status == OrderStatus.PaymentApproved
-            ? _j3Fulfillment.EnsurePendingAsync(order.Id, cancellationToken)
-            : Task.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        if (order.Status != OrderStatus.PaymentApproved)
+            return;
+
+        await _j3Fulfillment.EnsurePendingAsync(order.Id, cancellationToken);
+        await _melhorEnvioShipment.EnsureAsync(order.Id, cancellationToken);
+    }
 
     private bool CommercialCheckoutAllowedInCurrentEnvironment()
     {

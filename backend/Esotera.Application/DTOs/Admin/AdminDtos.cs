@@ -78,7 +78,29 @@ public record AdminOrderDetailDto(
     AdminOrderFiscalSummaryDto Fiscal,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    long RowVersion
+    long RowVersion,
+    /// <summary>Envio Melhor Envio. Null quando o frete não é Melhor Envio ou ainda não há registro.</summary>
+    AdminOrderMelhorEnvioDto? MelhorEnvio = null
+);
+
+/// <summary>
+/// Envio Melhor Envio exposto ao Admin. Sem token, sem payload bruto, sem chave de NF-e.
+/// </summary>
+public record AdminOrderMelhorEnvioDto(
+    string Status,
+    string Environment,
+    string? ShipmentId,
+    string? Protocol,
+    string? TrackingCode,
+    string? TrackingUrl,
+    string? LabelUrl,
+    DateTime? CartCreatedAtUtc,
+    DateTime? PurchasedAtUtc,
+    DateTime? LabelGeneratedAtUtc,
+    DateTime? LastSyncAtUtc,
+    string? LastSyncErrorCode,
+    string? LastSyncErrorMessage,
+    DateTime UpdatedAtUtc
 );
 
 /// <summary>

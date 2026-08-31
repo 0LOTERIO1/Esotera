@@ -25,6 +25,31 @@ import type { OrderStatus } from "@/types";
 import { useToastStore } from "@/stores/toastStore";
 
 /** Labels para status fiscal reais do backend (FiscalInvoiceStatus + awaiting_xml). */
+function melhorEnvioStatusLabel(status: string): string {
+  switch (status) {
+    case "waiting_invoice":
+      return "aguardando NF-e";
+    case "ready_to_create":
+      return "pronto para criar envio";
+    case "cart_pending":
+      return "inserindo no carrinho";
+    case "cart_created":
+      return "criado no carrinho";
+    case "purchase_pending":
+      return "compra em andamento";
+    case "purchased":
+      return "etiqueta comprada";
+    case "label_generated":
+      return "etiqueta gerada";
+    case "failed":
+      return "erro";
+    case "cancelled":
+      return "cancelado";
+    default:
+      return status || "não criado";
+  }
+}
+
 function fiscalStatusLabel(status: string): string {
   switch (status) {
     case "authorized":
@@ -56,6 +81,7 @@ export default function AdminOrdersPage() {
   const [importingFiscal, setImportingFiscal] = useState(false);
   const [fiscalXmlFile, setFiscalXmlFile] = useState<File | null>(null);
   const [sendingJ3, setSendingJ3] = useState(false);
+  const [preparingMelhorEnvio, setPreparingMelhorEnvio] = useState(false);
   const fiscalXmlInputRef = useRef<HTMLInputElement>(null);
 
   function clearFiscalXmlSelection() {
@@ -196,6 +222,31 @@ export default function AdminOrdersPage() {
       );
     } finally {
       setImportingFiscal(false);
+    }
+  }
+
+  /** Só reavalia o registro local. Nunca chama o Melhor Envio. */
+  async function prepareMelhorEnvio() {
+    if (!selected || preparingMelhorEnvio) return;
+    setPreparingMelhorEnvio(true);
+    try {
+      const updated = await adminApi.prepareMelhorEnvio(selected.id);
+      setSelected(updated);
+      push(
+        "success",
+        `Melhor Envio: ${melhorEnvioStatusLabel(
+          updated.melhorEnvio?.status ?? "",
+        )}`,
+      );
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError
+          ? err.detail || err.userMessage
+          : "Não foi possível atualizar o status Melhor Envio.",
+      );
+    } finally {
+      setPreparingMelhorEnvio(false);
     }
   }
 
@@ -519,10 +570,83 @@ export default function AdminOrdersPage() {
                 ) : null}
               </dl>
               {isMelhorEnvioShipping ? (
-                <p className="mt-2 text-xs text-esotera-muted">
-                  Envio no Melhor Envio: não criado. A criação de envio e a
-                  etiqueta ainda não estão implementadas.
-                </p>
+                <div className="mt-3 border-t border-esotera-border/70 pt-3">
+                  <p className="text-esotera-text">
+                    Status Melhor Envio:{" "}
+                    {melhorEnvioStatusLabel(selected.melhorEnvio?.status ?? "")}
+                  </p>
+                  {selected.melhorEnvio ? (
+                    <dl className="mt-1 space-y-1 text-esotera-muted">
+                      <div>Ambiente: {selected.melhorEnvio.environment}</div>
+                      {selected.melhorEnvio.shipmentId ? (
+                        <div>
+                          ID Melhor Envio: {selected.melhorEnvio.shipmentId}
+                        </div>
+                      ) : null}
+                      {selected.melhorEnvio.protocol ? (
+                        <div>Protocolo: {selected.melhorEnvio.protocol}</div>
+                      ) : null}
+                      {selected.melhorEnvio.trackingCode ? (
+                        <div>
+                          Rastreio:{" "}
+                          {selected.melhorEnvio.trackingUrl ? (
+                            <a
+                              href={selected.melhorEnvio.trackingUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline"
+                            >
+                              {selected.melhorEnvio.trackingCode}
+                            </a>
+                          ) : (
+                            selected.melhorEnvio.trackingCode
+                          )}
+                        </div>
+                      ) : null}
+                      {selected.melhorEnvio.labelUrl ? (
+                        <div>
+                          <a
+                            href={selected.melhorEnvio.labelUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline"
+                          >
+                            Abrir etiqueta
+                          </a>
+                        </div>
+                      ) : null}
+                      {selected.melhorEnvio.lastSyncErrorMessage ? (
+                        <div className="text-esotera-secondary">
+                          Último erro:{" "}
+                          {selected.melhorEnvio.lastSyncErrorMessage}
+                          {selected.melhorEnvio.lastSyncErrorCode
+                            ? ` (${selected.melhorEnvio.lastSyncErrorCode})`
+                            : ""}
+                        </div>
+                      ) : null}
+                    </dl>
+                  ) : (
+                    <p className="mt-1 text-esotera-muted">
+                      Nenhum registro local. Use o botão abaixo para criar.
+                    </p>
+                  )}
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void prepareMelhorEnvio()}
+                      disabled={preparingMelhorEnvio}
+                    >
+                      {preparingMelhorEnvio
+                        ? "Atualizando…"
+                        : "Preparar envio Melhor Envio"}
+                    </Button>
+                    <p className="mt-2 text-xs text-esotera-muted">
+                      Apenas atualiza o controle interno. Não cria envio, não
+                      compra etiqueta e não chama o Melhor Envio.
+                    </p>
+                  </div>
+                </div>
               ) : null}
             </div>
 

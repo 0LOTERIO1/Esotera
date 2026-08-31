@@ -231,6 +231,22 @@ export function mapAdminOrderDetail(api: {
   createdAt: string;
   updatedAt: string;
   rowVersion: number;
+  melhorEnvio?: {
+    status: string;
+    environment: string;
+    shipmentId?: string | null;
+    protocol?: string | null;
+    trackingCode?: string | null;
+    trackingUrl?: string | null;
+    labelUrl?: string | null;
+    cartCreatedAtUtc?: string | null;
+    purchasedAtUtc?: string | null;
+    labelGeneratedAtUtc?: string | null;
+    lastSyncAtUtc?: string | null;
+    lastSyncErrorCode?: string | null;
+    lastSyncErrorMessage?: string | null;
+    updatedAtUtc: string;
+  } | null;
 }): AdminOrderDetail {
   return {
     id: api.id,
@@ -303,5 +319,25 @@ export function mapAdminOrderDetail(api: {
     createdAt: api.createdAt,
     updatedAt: api.updatedAt,
     rowVersion: api.rowVersion,
+    melhorEnvio: api.melhorEnvio
+      ? {
+          status: api.melhorEnvio.status,
+          environment: api.melhorEnvio.environment,
+          shipmentId: api.melhorEnvio.shipmentId ?? undefined,
+          protocol: api.melhorEnvio.protocol ?? undefined,
+          trackingCode: api.melhorEnvio.trackingCode ?? undefined,
+          trackingUrl: api.melhorEnvio.trackingUrl ?? undefined,
+          labelUrl: api.melhorEnvio.labelUrl ?? undefined,
+          cartCreatedAtUtc: api.melhorEnvio.cartCreatedAtUtc ?? undefined,
+          purchasedAtUtc: api.melhorEnvio.purchasedAtUtc ?? undefined,
+          labelGeneratedAtUtc:
+            api.melhorEnvio.labelGeneratedAtUtc ?? undefined,
+          lastSyncAtUtc: api.melhorEnvio.lastSyncAtUtc ?? undefined,
+          lastSyncErrorCode: api.melhorEnvio.lastSyncErrorCode ?? undefined,
+          lastSyncErrorMessage:
+            api.melhorEnvio.lastSyncErrorMessage ?? undefined,
+          updatedAtUtc: api.melhorEnvio.updatedAtUtc,
+        }
+      : undefined,
   };
 }

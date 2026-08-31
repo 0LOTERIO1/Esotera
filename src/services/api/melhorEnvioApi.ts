@@ -16,12 +16,35 @@ export type MelhorEnvioStatusDto = {
   connectedAtUtc: string | null;
   accessTokenValid: boolean;
   needsReauthorization: boolean;
+  environmentMismatch?: boolean;
+};
+
+export type MelhorEnvioDiagnosticsDto = {
+  configuredEnvironment: string;
+  baseUrl: string;
+  configured: boolean;
+  tokenPresent: boolean;
+  /** null quando a sonda não foi executada (probe=false). */
+  canAuthenticate: boolean | null;
+  message: string;
+  connection: MelhorEnvioStatusDto;
 };
 
 export const melhorEnvioApi = {
   getStatus(): Promise<MelhorEnvioStatusDto> {
     return apiClient.get<MelhorEnvioStatusDto>(
       "/api/admin/integrations/melhor-envio/status",
+      AUTH,
+    );
+  },
+
+  /**
+   * Diagnóstico Admin-only, sem segredos. `probe=true` faz uma cotação fixa de
+   * teste (leitura) — não cria envio nem compra etiqueta.
+   */
+  getDiagnostics(probe: boolean): Promise<MelhorEnvioDiagnosticsDto> {
+    return apiClient.get<MelhorEnvioDiagnosticsDto>(
+      `/api/admin/integrations/melhor-envio/diagnostics?probe=${probe ? "true" : "false"}`,
       AUTH,
     );
   },

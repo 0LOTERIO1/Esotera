@@ -13,6 +13,7 @@ import { ApiError } from "@/services/api/apiClient";
 import {
   melhorEnvioApi,
   melhorEnvioErrorMessage,
+  type MelhorEnvioDiagnosticsDto,
   type MelhorEnvioStatusDto,
 } from "@/services/api/melhorEnvioApi";
 import type { StoreSettings } from "@/types";
@@ -26,6 +27,11 @@ function formatUtc(iso: string | null): string {
   }
 }
 
+function yesNo(value: boolean | null | undefined): string {
+  if (value === null || value === undefined) return "não verificado";
+  return value ? "sim" : "não";
+}
+
 function MelhorEnvioSection() {
   const apiMode = isApiMode();
   const push = useToastStore((s) => s.push);
@@ -33,6 +39,11 @@ function MelhorEnvioSection() {
   const [status, setStatus] = useState<MelhorEnvioStatusDto | null>(null);
   const [loading, setLoading] = useState(apiMode);
   const [connecting, setConnecting] = useState(false);
+  const [diagnostics, setDiagnostics] =
+    useState<MelhorEnvioDiagnosticsDto | null>(null);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState<
+    "config" | "probe" | null
+  >(null);
 
   useEffect(() => {
     const me = searchParams.get("me");
@@ -96,6 +107,27 @@ function MelhorEnvioSection() {
     }
   }
 
+  async function runDiagnostics(probe: boolean) {
+    setDiagnosticsBusy(probe ? "probe" : "config");
+    try {
+      const next = await melhorEnvioApi.getDiagnostics(probe);
+      setDiagnostics(next);
+      setStatus(next.connection);
+    } catch (err) {
+      push(
+        "error",
+        err instanceof ApiError
+          ? err.userMessage
+          : "Não foi possível executar o diagnóstico do Melhor Envio.",
+      );
+    } finally {
+      setDiagnosticsBusy(null);
+    }
+  }
+
+  const environmentLabel =
+    diagnostics?.configuredEnvironment ?? status?.environment ?? "ambiente não verificado";
+
   if (!apiMode) {
     return (
       <section className="mt-10 max-w-xl border-t border-esotera-secondary/15 pt-8">
@@ -103,7 +135,7 @@ function MelhorEnvioSection() {
           Melhor Envio
         </h2>
         <p className="mt-2 text-sm text-esotera-muted">
-          Disponível apenas no modo API (OAuth Sandbox).
+          Disponível apenas no modo API (conexão OAuth).
         </p>
       </section>
     );
@@ -115,7 +147,8 @@ function MelhorEnvioSection() {
         Melhor Envio
       </h2>
       <p className="mt-1 text-sm text-esotera-muted">
-        Conexão OAuth Sandbox (escopo shipping-calculate). A cotação real depende
+        Conexão OAuth Melhor Envio ({environmentLabel}) — escopo
+        shipping-calculate. A cotação real depende
         da flag &quot;Cotação Melhor Envio ativa&quot; nas configurações abaixo —
         independente deste status OAuth e de MELHOR_ENVIO_ENABLED.
       </p>
@@ -162,6 +195,88 @@ function MelhorEnvioSection() {
             >
               {connecting ? "Redirecionando…" : "Conectar Melhor Envio"}
             </Button>
+          </div>
+
+          <div className="mt-6 border-t border-esotera-secondary/15 pt-4">
+            <h3 className="text-sm font-medium text-esotera-secondary">
+              Diagnóstico
+            </h3>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void runDiagnostics(false)}
+                disabled={diagnosticsBusy !== null}
+              >
+                {diagnosticsBusy === "config"
+                  ? "Verificando…"
+                  : "Verificar configuração"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void runDiagnostics(true)}
+                disabled={diagnosticsBusy !== null}
+              >
+                {diagnosticsBusy === "probe"
+                  ? "Testando…"
+                  : "Testar cotação segura"}
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-esotera-muted">
+              &quot;Verificar configuração&quot; não chama o Melhor Envio.
+              &quot;Testar cotação segura&quot; faz apenas uma cotação fixa de
+              teste (somente leitura): não cria envio, não gera etiqueta e não
+              compra frete.
+            </p>
+
+            {diagnostics ? (
+              <dl className="mt-4 space-y-1 text-sm text-esotera-muted">
+                <div>
+                  Ambiente configurado:{" "}
+                  <span className="text-esotera-secondary">
+                    {diagnostics.configuredEnvironment}
+                  </span>
+                </div>
+                <div>Base URL: {diagnostics.baseUrl}</div>
+                <div>Servidor configurado: {yesNo(diagnostics.configured)}</div>
+                <div>Token presente: {yesNo(diagnostics.tokenPresent)}</div>
+                <div>
+                  Autenticação validada: {yesNo(diagnostics.canAuthenticate)}
+                </div>
+                <div>
+                  Conexão salva — ambiente:{" "}
+                  {diagnostics.connection.environment ?? "—"}
+                </div>
+                <div>
+                  Conexão salva — status:{" "}
+                  {diagnostics.connection.connected
+                    ? "conectado"
+                    : "desconectado"}
+                  {diagnostics.connection.needsReauthorization
+                    ? " (reautorizar)"
+                    : ""}
+                  {diagnostics.connection.environmentMismatch
+                    ? " (ambiente divergente)"
+                    : ""}
+                </div>
+                <div>
+                  Conexão salva — escopos:{" "}
+                  {diagnostics.connection.scopes ?? "—"}
+                </div>
+                <div>
+                  Access token válido até:{" "}
+                  {formatUtc(diagnostics.connection.accessTokenExpiresAtUtc)}
+                </div>
+                <div>
+                  Refresh token válido até:{" "}
+                  {formatUtc(diagnostics.connection.refreshTokenExpiresAtUtc)}
+                </div>
+                <div className="pt-1 text-esotera-secondary">
+                  {diagnostics.message}
+                </div>
+              </dl>
+            ) : null}
           </div>
         </div>
       )}
